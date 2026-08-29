@@ -2,7 +2,7 @@
 
 基于 **FSRS 间隔重复算法**的背单词 PWA（渐进式 Web 应用），完全兼容 **Anki 词库（.apkg）导入**，专为小孩背单词和语文课文背诵设计。
 
-> 在线使用：https://savagezhao-ai.github.io/rouriustudy/
+> 在线使用：https://savagezhao-ai.github.io/rouroustudy/
 
 ## 功能特性
 

@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  // GitHub Pages 部署在 /rouriustudy/ 子路径下
-  base: '/rouriustudy/',
+  // GitHub Pages 部署在 /rouroustudy/ 子路径下
+  base: '/rouroustudy/',
   plugins: [
     react(),
     VitePWA({
