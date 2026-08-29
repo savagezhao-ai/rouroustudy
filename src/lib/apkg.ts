@@ -25,7 +25,7 @@ let sqlPromise: Promise<any> | null = null
 
 function getSql() {
   if (!sqlPromise) {
-    sqlPromise = initSqlJs({ locateFile: () => '/sql-wasm.wasm' })
+    sqlPromise = initSqlJs({ locateFile: () => `${import.meta.env.BASE_URL}sql-wasm.wasm` })
   }
   return sqlPromise
 }
