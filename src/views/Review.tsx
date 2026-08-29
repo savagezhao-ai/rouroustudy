@@ -208,7 +208,7 @@ export default function Review({
                 <pre>{item.word.translation}</pre>
               </div>
               {sections.map((f, i) => (
-                <details key={i} className="dict-section" open={i < 2}>
+                <details key={i} className="dict-section" open={i < 5}>
                   <summary>{f.name}</summary>
                   <pre>{f.value}</pre>
                 </details>

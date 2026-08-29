@@ -34,7 +34,7 @@ body {
 }
 
 .app {
-  max-width: 480px;
+  max-width: 1600px;
   margin: 0 auto;
   min-height: 100%;
   display: flex;
@@ -818,5 +818,115 @@ body {
 .row-actions .btn-ghost {
   padding: 8px 16px;
   font-size: 14px;
+}
+
+/* ================= 宽屏布局（≥900px）：充分利用宽度，减少上下滚动 ================= */
+@media (min-width: 900px) {
+  .screen {
+    padding: 32px 40px calc(32px + env(safe-area-inset-bottom));
+    gap: 20px;
+  }
+
+  /* ---------- 复习：左右分栏，左边单词、右边字典分区多列 ---------- */
+  .anki-card {
+    display: flex;
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .anki-front {
+    flex: 0 0 360px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border-right: 1px solid var(--border);
+    padding: 48px 24px;
+    position: relative;
+  }
+
+  .anki-card .word {
+    font-size: 64px;
+  }
+
+  .anki-back {
+    flex: 1;
+    min-width: 0;
+    padding: 16px 18px;
+  }
+
+  .dict-sections {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 10px;
+    max-height: 72vh;
+  }
+
+  /* 主释义横跨整行 */
+  .dict-section.main {
+    grid-column: 1 / -1;
+  }
+
+  .dict-section pre {
+    font-size: 16px;
+  }
+
+  /* 评分按钮与翻面按钮限宽居中，不至于拉成超宽条 */
+  .rating-row,
+  .btn-big {
+    width: 100%;
+    max-width: 680px;
+    margin: 0 auto;
+  }
+
+  /* ---------- 首页：词库多列 ---------- */
+  .deck-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 12px;
+  }
+
+  /* ---------- 词库管理：单词列表多列 ---------- */
+  .word-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 10px;
+  }
+
+  /* ---------- 管理：按钮横排、添加表单横排 ---------- */
+  .manage-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .manage-actions .btn-primary {
+    white-space: nowrap;
+  }
+
+  .manage-card.add-word {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .manage-card.add-word h3 {
+    margin: 0;
+    white-space: nowrap;
+  }
+
+  .manage-card.add-word .input {
+    flex: 1;
+    min-width: 180px;
+    width: auto;
+  }
+
+  .manage-card.add-word .btn-primary {
+    white-space: nowrap;
+  }
+
+  .summary {
+    padding: 80px 20px;
+  }
 }
 

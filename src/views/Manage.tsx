@@ -228,23 +228,25 @@ export default function Manage({
             <span>词库管理</span>
           </header>
 
-          <button className="btn-primary" onClick={createDeck} disabled={importing}>
-            ＋ 新建词库
-          </button>
+          <div className="manage-actions">
+            <button className="btn-primary" onClick={createDeck} disabled={importing}>
+              ＋ 新建词库
+            </button>
 
-          <label className="btn-primary file-btn" style={{ textAlign: 'center' }}>
-            {importing ? '导入中，请稍候…' : '📥 导入 Anki 词库（.apkg）'}
-            <input
-              type="file"
-              accept=".apkg,.colpkg,application/octet-stream"
-              disabled={importing}
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) importApkgFile(f)
-                e.target.value = ''
-              }}
-            />
-          </label>
+            <label className="btn-primary file-btn" style={{ textAlign: 'center' }}>
+              {importing ? '导入中，请稍候…' : '📥 导入 Anki 词库（.apkg）'}
+              <input
+                type="file"
+                accept=".apkg,.colpkg,application/octet-stream"
+                disabled={importing}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) importApkgFile(f)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
 
           <div className="deck-list">
             {decks.map((deck) => (
@@ -293,7 +295,7 @@ export default function Manage({
               <span>{current.name}（{words.length} 词）</span>
             </header>
 
-            <div className="manage-card">
+            <div className="manage-card add-word">
               <h3>添加单词</h3>
               <input
                 className="input"

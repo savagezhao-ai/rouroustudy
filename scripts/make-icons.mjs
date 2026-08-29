@@ -60,6 +60,9 @@ makePng(192, 'public/pwa-192.png')
 makePng(512, 'public/pwa-512.png')
 
 // 复制 sql.js 的 wasm（Anki apkg 解析依赖），保证离线可用
+// 浏览器构建请求 sql-wasm-browser.wasm，Node 构建请求 sql-wasm.wasm，两个都带上
 import { copyFileSync } from 'node:fs'
 copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', 'public/sql-wasm.wasm')
 console.log('已复制 public/sql-wasm.wasm')
+copyFileSync('node_modules/sql.js/dist/sql-wasm-browser.wasm', 'public/sql-wasm-browser.wasm')
+console.log('已复制 public/sql-wasm-browser.wasm')

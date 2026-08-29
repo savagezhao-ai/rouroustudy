@@ -25,7 +25,10 @@ let sqlPromise: Promise<any> | null = null
 
 function getSql() {
   if (!sqlPromise) {
-    sqlPromise = initSqlJs({ locateFile: () => `${import.meta.env.BASE_URL}sql-wasm.wasm` })
+    sqlPromise = initSqlJs({
+      // 按实际请求的文件名拼接（浏览器构建会请求 sql-wasm-browser.wasm）
+      locateFile: (file: string) => `${import.meta.env.BASE_URL}${file}`,
+    })
   }
   return sqlPromise
 }
