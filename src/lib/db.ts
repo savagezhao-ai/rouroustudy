@@ -9,12 +9,19 @@ export interface Deck {
   createdAt: number
 }
 
+/** Anki 卡片的完整字段（翻面后分区显示用） */
+export interface WordField {
+  name: string
+  value: string
+}
+
 export interface Word {
   id: string // 格式：`${deckId}:${word}`，同一单词可同时存在于多个词库
   word: string
   phonetic: string
   translation: string
   deckId: string
+  fields?: WordField[] // Anki 原始全部字段（牛津双解、简明、词根等）
 }
 
 export interface CardRow {

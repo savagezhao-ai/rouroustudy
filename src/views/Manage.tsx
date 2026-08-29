@@ -10,6 +10,7 @@ import {
 } from '../lib/db'
 import { englishVoices, DEFAULT_SPEECH, speak, type SpeechSettings } from '../lib/speech'
 import { importApkg } from '../lib/apkg'
+import { uiPrompt, uiConfirm } from '../components/Dialog'
 
 export default function Manage({
   onBack,
@@ -46,7 +47,7 @@ export default function Manage({
   /* ---------- 词库操作 ---------- */
 
   async function createDeck() {
-    const name = prompt('新词库名称：')?.trim()
+    const name = (await uiPrompt('新词库名称：'))?.trim()
     if (!name) return
     const d = await db()
     const deck: Deck = { id: newId(), name, createdAt: Date.now() }
@@ -57,7 +58,7 @@ export default function Manage({
   }
 
   async function renameDeck(deck: Deck) {
-    const name = prompt('重命名词库：', deck.name)?.trim()
+    const name = (await uiPrompt('重命名词库：', deck.name))?.trim()
     if (!name) return
     const d = await db()
     await d.put('decks', { ...deck, name })
@@ -66,7 +67,7 @@ export default function Manage({
   }
 
   async function deleteDeck(deck: Deck) {
-    if (!confirm(`确定删除词库「${deck.name}」吗？其中的单词和学习进度会一起删除。`)) return
+    if (!(await uiConfirm(`确定删除词库「${deck.name}」吗？其中的单词和学习进度会一起删除。`, { danger: true }))) return
     const d = await db()
     const all = await d.getAll('words')
     const mine = all.filter((w) => w.deckId === deck.id)
@@ -110,6 +111,7 @@ export default function Manage({
             phonetic: w.phonetic,
             translation: w.translation,
             deckId: deck.id,
+            fields: w.fields, // Anki 全部字段（翻面分区显示）
           }),
         ),
       )
@@ -170,7 +172,7 @@ export default function Manage({
   }
 
   async function deleteWord(w: Word) {
-    if (!current || !confirm(`删除单词 ${w.word}？`)) return
+    if (!current || !(await uiConfirm(`删除单词 ${w.word}？`, { danger: true }))) return
     const d = await db()
     await d.delete('words', w.id)
     await d.delete('cards', w.id)

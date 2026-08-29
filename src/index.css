@@ -175,6 +175,85 @@ body {
   margin: 4px 0 0;
 }
 
+/* ---------- 应用内对话框（替代原生 prompt/confirm） ---------- */
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 27, 46, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  padding: 24px;
+}
+
+.dialog {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 22px 18px 16px;
+  width: 100%;
+  max-width: 340px;
+  box-shadow: 0 12px 40px rgba(28, 27, 46, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.dialog-input {
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 12px;
+  font-size: 16px; /* ≥16px 防 iOS 聚焦缩放 */
+  outline: none;
+}
+
+.dialog-input:focus {
+  border-color: var(--brand);
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.dialog-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dialog-btn.primary {
+  background: var(--brand);
+  color: #fff;
+}
+
+.dialog-btn.primary:active {
+  background: var(--brand-dark);
+}
+
+.dialog-btn.danger {
+  background: var(--red);
+  color: #fff;
+}
+
+.dialog-btn.ghost {
+  background: transparent;
+  color: var(--muted);
+}
+
 /* ---------- 复习 ---------- */
 .review-header {
   display: flex;
@@ -315,6 +394,144 @@ body {
   position: absolute;
   opacity: 0;
   pointer-events: none;
+}
+
+/* ---------- Anki 翻卡模式 ---------- */
+.anki-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 10px rgba(28, 27, 46, 0.06);
+  padding: 8px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.anki-front {
+  padding: 44px 20px 36px;
+  text-align: center;
+  position: relative;
+}
+
+.anki-card .word {
+  font-size: 48px;
+  font-weight: 700;
+}
+
+.anki-back {
+  padding: 12px 14px 8px;
+  cursor: default;
+}
+
+.dict-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 52vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dict-section {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.dict-section h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--brand);
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.dict-section pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+  user-select: text;
+}
+
+.dict-section summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 2px 0;
+  list-style: none;
+}
+
+.dict-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.dict-section summary::before {
+  content: '▸ ';
+  color: var(--brand);
+}
+
+.dict-section[open] summary::before {
+  content: '▾ ';
+}
+
+/* 四档自评按钮 */
+.rating-row {
+  display: flex;
+  gap: 8px;
+}
+
+.rate-btn {
+  flex: 1;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 4px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 16px;
+  font-weight: 600;
+  transition: transform 0.1s;
+}
+
+.rate-btn:active {
+  transform: scale(0.96);
+}
+
+.rate-label {
+  font-size: 16px;
+}
+
+.rate-due {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+.rate-again {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.rate-hard {
+  background: #fff3e0;
+  color: #d97a1a;
+}
+
+.rate-good {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.rate-easy {
+  background: var(--brand-soft);
+  color: var(--brand);
 }
 
 /* ---------- 词库管理 ---------- */

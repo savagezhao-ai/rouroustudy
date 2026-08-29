@@ -7,6 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false, // 在 main.tsx 手动注册（带 controllerchange 自动刷新）
       includeAssets: ['pwa-192.png', 'pwa-512.png'],
       manifest: {
         name: '记词星 · 单词记忆助手',

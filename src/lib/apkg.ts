@@ -3,10 +3,17 @@
 import { unzipSync } from 'fflate'
 import initSqlJs from 'sql.js'
 
+/** Anki 卡片的完整字段（翻面分区显示用） */
+export interface ApkgField {
+  name: string
+  value: string
+}
+
 export interface ApkgWord {
   word: string
   phonetic: string
   translation: string
+  fields: ApkgField[] // 模板的全部字段（含单词/音标/释义之外的：牛津双解、简明、词根等）
 }
 
 export interface ApkgResult {
@@ -23,20 +30,27 @@ function getSql() {
   return sqlPromise
 }
 
-/** 清理 Anki 字段里的 HTML/标记，得到纯文本 */
+/** 清理 Anki 字段里的 HTML/标记，得到纯文本（保留换行便于分区阅读） */
 function clean(s: string): string {
-  return s
-    .replace(/\[sound:[^\]]*\]/g, ' ') // [sound:xxx.mp3]
-    .replace(/<br\s*\/?>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ') // HTML 标签
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/\[\/?[a-zA-Z0-9_]+\]/g, '') // Anki 富文本标记 [b]...[/b]
-    .replace(/\s+/g, ' ')
-    .trim()
+  return (
+    s
+      .replace(/\[sound:[^\]]*\]/g, ' ') // [sound:xxx.mp3]
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|tr)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ') // HTML 标签
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/\[\/?[a-zA-Z0-9_]+\]/g, '') // Anki 富文本标记 [b]...[/b]
+      // 压缩空白但保留换行
+      .split('\n')
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  )
 }
 
 interface NoteModel {
@@ -110,6 +124,7 @@ export async function importApkg(file: File): Promise<ApkgResult> {
 
     // 每种模板分别猜字段位置；取笔记最多的模板名作为词库名
     const idxCache = new Map<string, ReturnType<typeof guessFieldIndexes>>()
+    const namesCache = new Map<string, string[]>() // 模板 → 字段名列表
     const modelCount = new Map<string, number>()
     const words: ApkgWord[] = []
     const seen = new Set<string>()
@@ -119,6 +134,7 @@ export async function importApkg(file: File): Promise<ApkgResult> {
       const fields = String(row[1]).split('\x1f')
       if (!idxCache.has(mid)) {
         const names = models[mid]?.flds?.map((f) => f.name) ?? []
+        namesCache.set(mid, names)
         idxCache.set(mid, guessFieldIndexes(names))
       }
       modelCount.set(mid, (modelCount.get(mid) ?? 0) + 1)
@@ -126,25 +142,34 @@ export async function importApkg(file: File): Promise<ApkgResult> {
 
       const word = clean(fields[wi] ?? '')
       if (!word) continue
-      let phonetic = pi >= 0 ? normalizePhonetic(clean(fields[pi] ?? '')) : ''
+      let phonetic = pi >= 0 ? normalizePhonetic(clean(fields[pi] ?? '').replace(/\n/g, ' ')) : ''
       // 音标一般是 /xxx/ 形式，做一层校正
       if (phonetic && !/^[/\[ˈˌ:.]/.test(phonetic)) phonetic = ''
-      let translation = ti >= 0 ? clean(fields[ti] ?? '') : ''
+      let translation = ti >= 0 ? clean(fields[ti] ?? '').replace(/\n/g, ' ') : ''
       // 启发式：第二字段长得像音标且还有第三字段，则第三字段才是释义
       if (!translation && fields.length > 2) {
-        const second = clean(fields[1] ?? '')
+        const second = clean(fields[1] ?? '').replace(/\n/g, ' ')
         if (/^\/.+\//.test(second)) {
           phonetic = second
-          translation = clean(fields[2] ?? '')
+          translation = clean(fields[2] ?? '').replace(/\n/g, ' ')
         }
       }
-      if (!translation) translation = clean(fields[1] ?? '')
+      if (!translation) translation = clean(fields[1] ?? '').replace(/\n/g, ' ')
       if (!translation) continue
+
+      // 保留模板的全部字段（翻面分区显示）
+      const names = namesCache.get(mid) ?? []
+      const allFields: ApkgField[] = []
+      for (let i = 0; i < fields.length; i++) {
+        const value = clean(fields[i] ?? '')
+        if (!value) continue
+        allFields.push({ name: names[i] ?? `字段${i + 1}`, value })
+      }
 
       const key = word.toLowerCase()
       if (seen.has(key)) continue
       seen.add(key)
-      words.push({ word, phonetic, translation })
+      words.push({ word, phonetic, translation, fields: allFields })
     }
 
     // 词库名优先级：卡组名（col.decks JSON）> 模板名 > 文件名

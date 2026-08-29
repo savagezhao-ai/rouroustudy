@@ -8,3 +8,14 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+// Service Worker 更新后自动刷新页面，避免浏览器一直停留在旧版本
+if ('serviceWorker' in navigator) {
+  let refreshing = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return
+    refreshing = true
+    location.reload()
+  })
+  navigator.serviceWorker.register('/sw.js')
+}

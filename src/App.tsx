@@ -7,6 +7,7 @@ import { deckStats, type DeckStat } from './lib/study'
 import { starterDeck } from './data/starterDeck'
 import { loadVoices } from './lib/speech'
 import { getCurrentUser, getUsers, setCurrentUser, createUser, deleteUser, DEF_ID, type User } from './lib/users'
+import { Dialog, uiPrompt, uiConfirm, uiAlert } from './components/Dialog'
 
 type View = 'home' | 'review' | 'manage'
 type Mode = 'normal' | 'practice'
@@ -79,21 +80,23 @@ export default function App() {
     location.reload() // 切换数据库连接，整页重载最稳妥
   }
 
-  function handleCreateUser() {
-    const name = prompt('新用户的名字：')?.trim()
+  async function handleCreateUser() {
+    const name = (await uiPrompt('新用户的名字：'))?.trim()
     if (!name) return
-    if (!confirm(`确认创建用户「${name}」？TA 将拥有全新的独立学习进度。`)) return
+    if (!(await uiConfirm(`确认创建用户「${name}」？TA 将拥有全新的独立学习进度。`))) return
     createUser(name)
     location.reload()
   }
 
-  function handleDeleteUser() {
+  async function handleDeleteUser() {
     if (me.id === DEF_ID) {
-      alert('默认用户 def 不能删除')
+      await uiAlert('默认用户 def 不能删除')
       return
     }
-    if (!confirm(`确定删除当前用户「${me.name}」吗？TA 的全部词库和学习进度都会被删除。`)) return
-    if (!confirm(`再次确认：删除「${me.name}」后数据无法恢复，真的删除吗？`)) return
+    if (!(await uiConfirm(`确定删除当前用户「${me.name}」吗？TA 的全部词库和学习进度都会被删除。`, { danger: true })))
+      return
+    if (!(await uiConfirm(`再次确认：删除「${me.name}」后数据无法恢复，真的删除吗？`, { danger: true, confirmText: '仍然删除' })))
+      return
     if (deleteUser(me.id)) {
       location.reload()
     }
@@ -149,6 +152,7 @@ export default function App() {
           onChanged={handleManageChanged}
         />
       )}
+      <Dialog />
     </div>
   )
 }
