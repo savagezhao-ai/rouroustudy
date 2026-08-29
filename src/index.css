@@ -401,32 +401,50 @@ body {
   background: var(--card);
   border-radius: var(--radius);
   box-shadow: 0 2px 10px rgba(28, 27, 46, 0.06);
-  padding: 8px 0;
+  padding: 0;
   cursor: pointer;
   user-select: none;
 }
 
+/* 正面：顶部一行紧凑显示（单词 + 音标 + 发音按钮） */
 .anki-front {
-  padding: 44px 20px 36px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
   position: relative;
 }
 
 .anki-card .word {
-  font-size: 48px;
+  font-size: 30px;
   font-weight: 700;
 }
 
+.anki-front .phonetic {
+  margin-top: 0;
+  font-size: 15px;
+}
+
+.anki-card .btn-speak {
+  position: static;
+  width: 34px;
+  height: 34px;
+  font-size: 15px;
+}
+
 .anki-back {
-  padding: 12px 14px 8px;
+  padding: 12px 14px 10px;
   cursor: default;
 }
 
 .dict-sections {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 52vh;
+  gap: 6px;
+  max-height: 58vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -434,7 +452,7 @@ body {
 .dict-section {
   background: var(--bg);
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 
 .dict-section h4 {
@@ -457,13 +475,17 @@ body {
   user-select: text;
 }
 
+/* 折叠条：点击标题展开（Anki 风格） */
 .dict-section summary {
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
-  padding: 2px 0;
+  padding: 4px 0;
   list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .dict-section summary::-webkit-details-marker {
@@ -471,12 +493,22 @@ body {
 }
 
 .dict-section summary::before {
-  content: '▸ ';
+  content: '▸';
   color: var(--brand);
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .dict-section[open] summary::before {
-  content: '▾ ';
+  content: '▾';
+}
+
+.sec-lines {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 11px;
+  opacity: 0.6;
+  margin-left: auto;
 }
 
 /* 四档自评按钮 */
@@ -827,38 +859,23 @@ body {
     gap: 20px;
   }
 
-  /* ---------- 复习：左右分栏，左边单词、右边字典分区多列 ---------- */
-  .anki-card {
-    display: flex;
-    align-items: stretch;
-    padding: 0;
-  }
-
+  /* ---------- 复习：单词在顶部一行，字典分区双列 ---------- */
   .anki-front {
-    flex: 0 0 360px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    border-right: 1px solid var(--border);
-    padding: 48px 24px;
-    position: relative;
+    padding: 20px 24px;
   }
 
   .anki-card .word {
-    font-size: 64px;
+    font-size: 36px;
   }
 
   .anki-back {
-    flex: 1;
-    min-width: 0;
-    padding: 16px 18px;
+    padding: 14px 18px 12px;
   }
 
   .dict-sections {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
     max-height: 72vh;
   }
 
@@ -868,7 +885,8 @@ body {
   }
 
   .dict-section pre {
-    font-size: 16px;
+    font-size: 15px;
+    line-height: 1.7;
   }
 
   /* 评分按钮与翻面按钮限宽居中，不至于拉成超宽条 */

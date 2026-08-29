@@ -186,8 +186,8 @@ export default function Review({
         }}
       >
         <div className="anki-front">
-          <div className="word">{item.word.word}</div>
-          {item.word.phonetic && <div className="phonetic">{item.word.phonetic}</div>}
+          <span className="word">{item.word.word}</span>
+          {item.word.phonetic && <span className="phonetic">{item.word.phonetic}</span>}
           <button
             className="btn-speak"
             onClick={(e) => {
@@ -208,8 +208,13 @@ export default function Review({
                 <pre>{item.word.translation}</pre>
               </div>
               {sections.map((f, i) => (
-                <details key={i} className="dict-section" open={i < 5}>
-                  <summary>{f.name}</summary>
+                <details key={i} className="dict-section" open={i < 1}>
+                  <summary>
+                    {f.name}
+                    <em className="sec-lines">
+                      {f.value.length > 60 ? `${f.value.split('\n').length} 行` : ''}
+                    </em>
+                  </summary>
                   <pre>{f.value}</pre>
                 </details>
               ))}
