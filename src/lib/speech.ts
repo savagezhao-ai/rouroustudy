@@ -104,22 +104,50 @@ function findVoice(uri: string): SpeechSynthesisVoice | undefined {
 // 当前自动连读序列的令牌；手动朗读会使其自增，从而让正在进行的序列在下一句前中止
 let seqId = 0
 
+// 记录最近一次在手势内朗读过的单词，供 autoReadEntry 避免重复计数
+let primedWord = ''
+
 /**
- * 在「用户点击手势内」同步调用一次以解锁 Safari/iOS 的语音合成。
- * Safari 在没有任何手势内的 speak() 时，后续的异步 speak() 会被静默忽略。
- * 传一个几乎无声的空文本即可完成解锁，不影响后续发音。
+ * 必须在「用户点击手势内」同步调用，用来解锁 Safari/iOS 的语音合成。
+ * Safari 的硬规矩：页面里第一次 speechSynthesis.speak() 必须落在用户手势内，
+ * 否则之后任何（包括异步查词后的）自动朗读都会被静默忽略。
+ *
+ * 最稳妥的解锁方式：直接在手势内把单词本身念出来——既是解锁，也等于先读了一遍。
+ * 传入 word 时朗读该词；不传（如首页「查词典」空开）则念一个极短静音 token 仅做解锁，
+ * 真正的单词解锁会在随后的查询点击里补上。
  */
-export function primeSpeech() {
+export function primeSpeech(word?: string) {
   if (!hasSynth()) return
+  const synth = window.speechSynthesis
+  const w = (word ?? '').trim()
   try {
-    const u = new SpeechSynthesisUtterance('')
-    u.volume = 0
-    u.rate = 5
-    window.speechSynthesis.speak(u)
-    // 立即取消，避免空文本被真的朗读出来
-    window.speechSynthesis.cancel()
+    synth.resume()
   } catch {
     /* 忽略 */
+  }
+  if (w) {
+    // 朗读真实单词：完成解锁，并作为自动连读的第一遍
+    const u = new SpeechSynthesisUtterance(w)
+    u.lang = 'en-US'
+    u.rate = cachedSpeech.rate > 0 ? cachedSpeech.rate : DEFAULT_SPEECH.rate
+    primedWord = w.toLowerCase()
+    try {
+      synth.speak(u)
+    } catch {
+      /* 忽略 */
+    }
+  } else {
+    // 无单词时仅做解锁：极短静音 token（volume 0 不发声但能解锁）
+    primedWord = ''
+    try {
+      const u = new SpeechSynthesisUtterance(' ')
+      u.volume = 0
+      u.rate = 10
+      synth.speak(u)
+      synth.cancel()
+    } catch {
+      /* 忽略 */
+    }
   }
 }
 
@@ -226,12 +254,17 @@ export async function playSequence(
 /**
  * 查词自动朗读：单词读三遍（每次间隔 1 秒），然后依次朗读中文释义、英文解释。
  * 用户若手动点击任意 🔊，会立即中断自动连读并改读所点击内容。
+ *
+ * 若打开/查询的手势里已经念过该词（primeSpeech 完成解锁的那一遍），
+ * 这里只补足到三遍，避免重复朗读四遍。
  */
 export function autoReadEntry(entry: DictEntry) {
   if (!entry) return
+  const matched = primedWord && primedWord === entry.word.toLowerCase()
+  const wordRepeat = matched ? 2 : 3
   const items: { text: string; lang: SpeakLang }[] = []
-  // 单词读三遍
-  for (let i = 0; i < 3; i++) items.push({ text: entry.word, lang: 'en' })
+  // 单词读三遍（已念过一遍则补足两遍）
+  for (let i = 0; i < wordRepeat; i++) items.push({ text: entry.word, lang: 'en' })
   // 中文释义
   for (const t of entry.translation) {
     if (t) items.push({ text: t, lang: 'zh' })

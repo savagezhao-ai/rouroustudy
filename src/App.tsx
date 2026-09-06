@@ -146,7 +146,7 @@ export default function App() {
           deckId={activeDeckId}
           practice={mode === 'practice'}
           onLookupWord={(w) => {
-            primeSpeech()
+            primeSpeech(w)
             setDictWord(w)
           }}
           onExit={async () => {

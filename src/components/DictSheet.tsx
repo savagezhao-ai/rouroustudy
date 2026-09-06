@@ -167,7 +167,7 @@ export default function DictSheet({
                 onChange={(e) => void onInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    primeSpeech()
+                    primeSpeech(query.trim())
                     void search(query)
                   }
                 }}
@@ -176,7 +176,7 @@ export default function DictSheet({
               <button
                 className="btn-primary"
                 onClick={() => {
-                  primeSpeech()
+                  primeSpeech(query.trim())
                   void search(query)
                 }}
               >
@@ -191,7 +191,7 @@ export default function DictSheet({
                     key={s}
                     className="dict-suggest-item"
                     onClick={() => {
-                      primeSpeech()
+                      primeSpeech(s)
                       void search(s)
                     }}
                   >
