@@ -252,6 +252,15 @@ export async function playSequence(
 }
 
 /**
+ * 去掉释义前面的词性前缀（"n. " / "v. "），与词典面板显示、手动 🔊 朗读保持一致。
+ * 必须与 src/components/DictSheet.tsx 里的 splitPos 行为相同，否则自动连读会多出
+ * "n./v." 这类字母杂音（之前自动连读直接用 entry.definition 原始串，导致每句英文开头有杂音）。
+ */
+function stripPos(line: string): string {
+  return line.replace(/^[a-z]{1,5}\.\s*/i, '').trim()
+}
+
+/**
  * 查词自动朗读：单词读三遍（每次间隔 1 秒），然后依次朗读中文释义、英文解释。
  * 用户若手动点击任意 🔊，会立即中断自动连读并改读所点击内容。
  *
@@ -265,13 +274,15 @@ export function autoReadEntry(entry: DictEntry) {
   const items: { text: string; lang: SpeakLang }[] = []
   // 单词读三遍（已念过一遍则补足两遍）
   for (let i = 0; i < wordRepeat; i++) items.push({ text: entry.word, lang: 'en' })
-  // 中文释义
+  // 中文释义（剥掉词性前缀，避免把 "n." 念成字母杂音）
   for (const t of entry.translation) {
-    if (t) items.push({ text: t, lang: 'zh' })
+    const text = stripPos(t)
+    if (text) items.push({ text, lang: 'zh' })
   }
-  // 英文解释
+  // 英文解释（同上，必须剥掉 "n./v." 前缀）
   for (const d of entry.definition) {
-    if (d) items.push({ text: d, lang: 'en' })
+    const text = stripPos(d)
+    if (text) items.push({ text, lang: 'en' })
   }
   void playSequence(items, { repeat: 1, gapMs: 1000 })
 }
