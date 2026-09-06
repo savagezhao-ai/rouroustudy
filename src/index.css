@@ -1271,3 +1271,49 @@ body {
   }
 }
 
+/* ================= PWA 更新提示横幅 ================= */
+.pwa-update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-top));
+  background: var(--brand);
+  color: #fff;
+  font-size: 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+  animation: pwa-banner-in 0.2s ease-out;
+}
+
+.pwa-update-text {
+  font-weight: 600;
+}
+
+.pwa-update-btn {
+  border: none;
+  background: #fff;
+  color: var(--brand-dark, #2c23a8);
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+
+.pwa-update-btn:active {
+  transform: scale(0.96);
+}
+
+@keyframes pwa-banner-in {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+

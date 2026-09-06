@@ -10,6 +10,21 @@ export const DEFAULT_SPEECH: SpeechSettings = { voiceURI: '', rate: 0.9 }
 
 let voices: SpeechSynthesisVoice[] = []
 
+// 发音设置只在启动时加载一次并缓存到内存。
+// 关键：speak() 必须在用户点击手势「同步」调用 speechSynthesis.speak()，
+// Safari 在手势外（比如 await 之后）调用会被静默忽略，导致点了没声音。
+let cachedSpeech: SpeechSettings = DEFAULT_SPEECH
+
+/** 应用启动时调用：把发音设置读进内存，供 speak() 同步使用 */
+export function loadSpeechSettings() {
+  if (!('speechSynthesis' in window)) return
+  getMeta('speech', DEFAULT_SPEECH)
+    .then((s) => {
+      cachedSpeech = s
+    })
+    .catch(() => {})
+}
+
 function refreshVoices(): SpeechSynthesisVoice[] {
   if (!('speechSynthesis' in window)) return []
   voices = window.speechSynthesis.getVoices()
@@ -82,10 +97,11 @@ function findVoice(uri: string): SpeechSynthesisVoice | undefined {
 }
 
 /** 朗读文本。lang='zh' 时用中文音色（词典里的中文释义），默认英文 */
-export async function speak(text: string, lang: SpeakLang = 'en') {
-  if (!('speechSynthesis' in window)) return
-  const s = await getMeta<SpeechSettings>('speech', DEFAULT_SPEECH)
+export function speak(text: string, lang: SpeakLang = 'en') {
+  if (!('speechSynthesis' in window) || !text) return
   const synth = window.speechSynthesis
+  // 同步读取已缓存的设置；绝不在这里 await，否则 Safari 会因脱离手势而不发声
+  const s = cachedSpeech
   // 每次发音前重新拉取音色列表，避免用陈旧/空列表导致回落到默认音色
   refreshVoices()
   const u = new SpeechSynthesisUtterance(text)
@@ -98,11 +114,23 @@ export async function speak(text: string, lang: SpeakLang = 'en') {
     u.lang = lang === 'zh' ? 'zh-CN' : 'en-US'
   }
   u.rate = s.rate > 0 ? s.rate : DEFAULT_SPEECH.rate
-  const go = () => synth.speak(u)
+  // Safari/iOS：合成器常处于 paused 状态，先 resume 再 speak，否则静默失败
+  try {
+    synth.resume()
+  } catch {
+    /* 忽略 */
+  }
+  const go = () => {
+    try {
+      synth.speak(u)
+    } catch {
+      /* 忽略 */
+    }
+  }
   // 先 cancel 再立即 speak 在 Chrome 上会吞掉本次发音，稍微延迟
   if (synth.speaking || synth.pending) {
     synth.cancel()
-    setTimeout(go, 60)
+    setTimeout(go, 80)
   } else {
     go()
   }
