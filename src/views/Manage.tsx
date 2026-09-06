@@ -9,8 +9,16 @@ import {
   type Word,
 } from '../lib/db'
 import { englishVoices, DEFAULT_SPEECH, speak, type SpeechSettings } from '../lib/speech'
+import { dailyNewLimit } from '../lib/study'
 import { importApkg } from '../lib/apkg'
-import { uiPrompt, uiConfirm } from '../components/Dialog'
+import {
+  exportBackup,
+  downloadBackup,
+  readBackupFile,
+  applyBackup,
+  type ImportMode,
+} from '../lib/backup'
+import { uiPrompt, uiConfirm, uiChoose, uiAlert } from '../components/Dialog'
 
 export default function Manage({
   onBack,
@@ -28,6 +36,7 @@ export default function Manage({
   const [editing, setEditing] = useState<Word | null>(null)
   const [adding, setAdding] = useState({ word: '', phonetic: '', translation: '' })
   const [importing, setImporting] = useState(false)
+  const [dailyNew, setDailyNew] = useState(10)
 
   async function loadDecks() {
     const d = await db()
@@ -124,6 +133,21 @@ export default function Manage({
     } finally {
       setImporting(false)
     }
+  }
+
+  /* ---------- 词库设置 ---------- */
+
+  /** 每天发多少新词：即改即存，1~100 之间取整 */
+  async function updateDailyNew(v: number) {
+    if (!current) return
+    const clamped = Math.max(1, Math.min(100, Math.round(v) || 1))
+    setDailyNew(clamped)
+    const d = await db()
+    const next = { ...current, dailyNew: clamped }
+    await d.put('decks', next)
+    setCurrent(next)
+    onChanged()
+    setMsg(`「${current.name}」每天最多学 ${clamped} 个新词`)
   }
 
   /* ---------- 单词操作 ---------- */
@@ -258,6 +282,7 @@ export default function Manage({
                   className="icon-btn"
                   onClick={async () => {
                     setCurrent(deck)
+                    setDailyNew(dailyNewLimit(deck))
                     setSearch('')
                     await loadWords(deck)
                     setLevel('words')
@@ -277,6 +302,8 @@ export default function Manage({
 
           <SpeechSettingsCard />
 
+          <BackupCard />
+
           {msg && <p className="msg">{msg}</p>}
         </>
       ) : (
@@ -294,6 +321,23 @@ export default function Manage({
               </button>
               <span>{current.name}（{words.length} 词）</span>
             </header>
+
+            <div className="manage-card">
+              <h3>词库设置</h3>
+              <div className="rate-row">
+                <span className="hint">每天最多学</span>
+                <input
+                  className="input"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={dailyNew}
+                  onChange={(e) => updateDailyNew(parseInt(e.target.value) || 1)}
+                  style={{ width: 72 }}
+                />
+                <span className="hint">个新词</span>
+              </div>
+            </div>
 
             <div className="manage-card add-word">
               <h3>添加单词</h3>
@@ -470,6 +514,105 @@ function SpeechSettingsCard() {
           恢复默认
         </button>
       </div>
+    </div>
+  )
+}
+
+/* ---------- 数据备份 ---------- */
+
+function BackupCard() {
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  async function doExport() {
+    setBusy(true)
+    setMsg('正在打包…')
+    try {
+      const payload = await exportBackup()
+      downloadBackup(payload)
+      setMsg(
+        `✅ 已导出 ${payload.data.words.length} 个单词、${payload.data.cards.length} 张学习卡片、${payload.data.logs.length} 条复习记录`,
+      )
+    } catch (err) {
+      setMsg(`❌ 导出失败：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function doImport(file: File) {
+    setBusy(true)
+    setMsg('正在读取备份…')
+    try {
+      const check = await readBackupFile(file)
+      if (!check.ok) {
+        setMsg(`❌ ${check.error}`)
+        return
+      }
+
+      const { payload } = check
+      const d = payload.data
+      const day = new Date(payload.exportedAt).toLocaleDateString('zh-CN')
+      const choice = await uiChoose(
+        `备份来自「${payload.user.name}」\n` +
+          `${d.words.length} 个单词 · ${d.cards.length} 张学习卡片 · ${d.logs.length} 条复习记录\n` +
+          `导出于 ${day}\n\n` +
+          `要怎么导入到当前账号？`,
+        [
+          { value: 'merge', label: '合并', desc: '保留现有词库，只把备份里的内容并进来' },
+          {
+            value: 'replace',
+            label: '覆盖',
+            desc: '清空当前账号的全部数据，完全按备份恢复',
+            danger: true,
+          },
+        ],
+      )
+      if (!choice) {
+        setMsg('')
+        return
+      }
+
+      setMsg('正在导入…')
+      const summary = await applyBackup(payload, choice as ImportMode)
+      await uiAlert(
+        `导入完成：${summary.words} 个单词、${summary.cards} 张学习卡片、${summary.logs} 条复习记录。\n\n点确定后刷新页面。`,
+      )
+      // 数据库连接是按用户缓存的，整页重载最稳妥
+      location.reload()
+    } catch (err) {
+      setMsg(`❌ 导入失败：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="manage-card">
+      <h3>数据备份</h3>
+      <p className="backup-hint">
+        学习进度只存在这台设备的浏览器里，清缓存或换手机就会丢失。
+        导出成文件保存好，随时可以恢复。
+      </p>
+      <div className="backup-actions">
+        <button className="btn-primary" onClick={doExport} disabled={busy}>
+          {busy ? '处理中…' : '⬇ 导出备份'}
+        </button>
+        <label className="btn-ghost file-btn" style={{ textAlign: 'center' }}>
+          ⬆ 从备份恢复
+          <input
+            type="file"
+            accept=".json,application/json"
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) doImport(f)
+              e.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+      {msg && <p className="msg">{msg}</p>}
     </div>
   )
 }

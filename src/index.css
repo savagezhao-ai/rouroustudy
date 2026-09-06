@@ -254,6 +254,64 @@ body {
   color: var(--muted);
 }
 
+/* 多选项：导入备份时选「覆盖」还是「合并」 */
+.dialog-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dialog-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  padding: 11px 14px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.dialog-choice:active {
+  background: var(--brand-soft);
+}
+
+.dialog-choice em {
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.dialog-choice.danger {
+  border-color: var(--red);
+}
+
+.dialog-choice.danger strong {
+  color: var(--red);
+}
+
+/* ---------- 备份卡片 ---------- */
+.backup-hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.backup-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.backup-actions > * {
+  flex: 1;
+}
+
 /* ---------- 复习 ---------- */
 .review-header {
   display: flex;

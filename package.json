@@ -1,5 +1,5 @@
 {
-  "name": "wordmemo",
+  "name": "rouroustudy",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,6 +7,8 @@
     "dev": "vite",
     "prepare": "node scripts/make-icons.mjs",
     "build": "node scripts/make-icons.mjs && tsc -b && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -24,8 +26,10 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "fake-indexeddb": "^6.2.5",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vitest": "^3.2.7"
   }
 }

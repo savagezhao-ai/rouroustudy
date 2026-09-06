@@ -17,6 +17,11 @@ export interface DeckStat {
 
 export const todayStr = () => new Date().toDateString()
 
+/** 该词库每天发多少新词：词库自己配了就用配置，没有就用全局默认值 */
+export function dailyNewLimit(deck: Deck | undefined): number {
+  return deck?.dailyNew && deck.dailyNew > 0 ? deck.dailyNew : DAILY_NEW
+}
+
 export function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
   for (let i = a.length - 1; i > 0; i--) {
@@ -61,7 +66,7 @@ export async function deckStats(): Promise<DeckStat[]> {
         total: dw.length,
         learned: cards.length,
         due: cards.filter((c) => c.due <= now).length,
-        newLeft: Math.max(0, DAILY_NEW - used),
+        newLeft: Math.max(0, dailyNewLimit(deck) - used),
       }
     }),
   )
@@ -75,7 +80,11 @@ export async function deckStats(): Promise<DeckStat[]> {
 export async function buildQueue(deckId: string, practice = false): Promise<QueueItem[]> {
   const d = await db()
   const now = new Date()
-  const [words, cardRows] = await Promise.all([d.getAll('words'), d.getAll('cards')])
+  const [words, cardRows, deck] = await Promise.all([
+    d.getAll('words'),
+    d.getAll('cards'),
+    d.get('decks', deckId),
+  ])
   const deckWords = words.filter((w) => w.deckId === deckId)
 
   if (practice) {
@@ -92,7 +101,7 @@ export async function buildQueue(deckId: string, practice = false): Promise<Queu
   const key = newTodayKey(deckId)
   const npd = await getMeta(key, { date: '', count: 0 })
   const used = npd.date === todayStr() ? npd.count : 0
-  const chosen = fresh.slice(0, Math.max(0, DAILY_NEW - used))
+  const chosen = fresh.slice(0, Math.max(0, dailyNewLimit(deck) - used))
   if (chosen.length > 0) {
     await setMeta(key, { date: todayStr(), count: used + chosen.length })
   }

@@ -7,6 +7,8 @@ export interface Deck {
   id: string
   name: string
   createdAt: number
+  /** 每日新词上限，不设则用全局默认值 DAILY_NEW */
+  dailyNew?: number
 }
 
 /** Anki 卡片的完整字段（翻面后分区显示用） */

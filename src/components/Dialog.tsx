@@ -2,7 +2,14 @@
 // （在 PWA 沙箱/iframe 环境里原生弹窗会被拦截导致点击无效）
 import { useEffect, useRef, useState } from 'react'
 
-type Mode = 'prompt' | 'confirm' | 'alert'
+type Mode = 'prompt' | 'confirm' | 'alert' | 'choose'
+
+export interface DialogChoice {
+  label: string
+  value: string
+  desc?: string
+  danger?: boolean
+}
 
 interface DialogSpec {
   mode: Mode
@@ -10,6 +17,7 @@ interface DialogSpec {
   value?: string // prompt 的默认值
   danger?: boolean // 确认按钮显示红色
   confirmText?: string
+  choices?: DialogChoice[] // choose 模式的可选项
 }
 
 let listener: ((spec: DialogSpec | null) => void) | null = null
@@ -36,6 +44,11 @@ export function uiConfirm(title: string, opts?: { danger?: boolean; confirmText?
 /** 提示对话框（只有一个确定按钮） */
 export function uiAlert(title: string): Promise<boolean> {
   return open({ mode: 'alert', title }) as Promise<boolean>
+}
+
+/** 选择对话框：返回所选项的 value，取消返回 null */
+export function uiChoose(title: string, choices: DialogChoice[]): Promise<string | null> {
+  return open({ mode: 'choose', title, choices }) as Promise<string | null>
 }
 
 function close(v: string | boolean | null) {
@@ -66,11 +79,27 @@ export function Dialog() {
   if (!spec) return null
 
   const isPrompt = spec.mode === 'prompt'
+  const isChoose = spec.mode === 'choose'
+  const cancelValue = isPrompt || isChoose ? null : false
 
   return (
-    <div className="dialog-mask" onClick={() => close(isPrompt ? null : false)}>
+    <div className="dialog-mask" onClick={() => close(cancelValue)}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
         <p className="dialog-title">{spec.title}</p>
+        {isChoose && (
+          <div className="dialog-choices">
+            {(spec.choices ?? []).map((c) => (
+              <button
+                key={c.value}
+                className={`dialog-choice${c.danger ? ' danger' : ''}`}
+                onClick={() => close(c.value)}
+              >
+                <strong>{c.label}</strong>
+                {c.desc && <em>{c.desc}</em>}
+              </button>
+            ))}
+          </div>
+        )}
         {isPrompt && (
           <input
             ref={inputRef}
@@ -84,8 +113,8 @@ export function Dialog() {
           />
         )}
         <div className="dialog-actions">
-          {spec.mode !== 'alert' && (
-            <button className="dialog-btn ghost" onClick={() => close(isPrompt ? null : false)}>
+          {spec.mode !== 'alert' && !isChoose && (
+            <button className="dialog-btn ghost" onClick={() => close(cancelValue)}>
               取消
             </button>
           )}
