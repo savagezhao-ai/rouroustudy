@@ -176,49 +176,43 @@ function speakNow(text: string, lang: SpeakLang = 'en'): Promise<void> {
     const s = cachedSpeech
     refreshVoices()
     const v = lang === 'zh' ? pickDefaultVoice('zh') : (findVoice(s.voiceURI) ?? pickDefaultVoice())
-    // 关键：朗读前先彻底取消上一段（含序列里上一句），再短暂停顿让取消生效。
-    // 否则在连续朗读时，浏览器常把选定音色弄丢、回落到默认音色（听感上比单独读单词更"廉价"），
-    // 也可能让上一句尾音混入当前句开头。手动点 🔊 也是这个路径，保证两者音色一致。
+    // 注意：这里【不要】调用 cancel()。
+    // 逐句 cancel 会切断上一句在音频缓冲里残留的尾音，下一句把残音切碎混进来，
+    // 在 Chrome/WebKit 上表现为「胡言乱语」杂音（某些长序列单词如 test 尤其明显）。
+    // 改为依赖 Web Speech 的自然队列：上一句 onend 之后再由 playSequence 调用本函数，
+    // 每句都重新指定音色（u.voice），即可避免回落默认音色、又不会产生残音杂音。
+    const u = new SpeechSynthesisUtterance(text)
+    if (v) {
+      u.voice = v
+      u.lang = v.lang
+    } else {
+      u.lang = lang === 'zh' ? 'zh-CN' : 'en-US'
+    }
+    u.rate = s.rate > 0 ? s.rate : DEFAULT_SPEECH.rate
+    let done = false
+    const finish = () => {
+      if (!done) {
+        done = true
+        resolve()
+      }
+    }
+    u.onend = finish
+    u.onerror = finish
+    // Safari 上 onend 有时不触发，按文本长度估算一个充裕的兜底时长（偏长，宁等勿抢）
+    const est = Math.max(900, (text.length * 90) / (u.rate || 1) + 1200)
+    const to = setTimeout(finish, est + 3000)
+    void to
     try {
-      synth.cancel()
+      synth.resume()
     } catch {
       /* 忽略 */
     }
-    const start = () => {
-      const u = new SpeechSynthesisUtterance(text)
-      if (v) {
-        u.voice = v
-        u.lang = v.lang
-      } else {
-        u.lang = lang === 'zh' ? 'zh-CN' : 'en-US'
-      }
-      u.rate = s.rate > 0 ? s.rate : DEFAULT_SPEECH.rate
-      let done = false
-      const finish = () => {
-        if (!done) {
-          done = true
-          resolve()
-        }
-      }
-      u.onend = finish
-      u.onerror = finish
-      // Safari 上 onend 有时不触发，按文本长度估算一个兜底时长
-      const est = Math.max(800, (text.length * 70) / (u.rate || 1) + 500)
-      const to = setTimeout(finish, est + 2000)
-      try {
-        synth.resume()
-      } catch {
-        /* 忽略 */
-      }
-      try {
-        synth.speak(u)
-      } catch {
-        clearTimeout(to)
-        finish()
-      }
+    try {
+      synth.speak(u)
+    } catch {
+      clearTimeout(to)
+      finish()
     }
-    // 让 cancel 生效：Chrome 在 cancel 后立即 speak 会吞掉本次发音
-    setTimeout(start, 50)
   })
 }
 
@@ -228,18 +222,23 @@ export function speak(text: string, lang: SpeakLang = 'en') {
   // 手动点击 -> 打断自动连读
   seqId++
   const synth = window.speechSynthesis
-  // 先取消再朗读
+  // 手动打断：cancel 一次清掉正在朗读的句子
   try {
     synth.cancel()
   } catch {
     /* 忽略 */
   }
-  void speakNow(text, lang)
+  // 等一小段让 cancel 生效、清掉残留音频，避免与所点内容重叠成杂音
+  setTimeout(() => void speakNow(text, lang), 80)
 }
 
 /**
  * 自动连读序列：依次朗读 items，每项可重复 repeat 次、项间停顿 gapMs。
  * 任意时刻若发生手动朗读（seqId 变化），序列立即中止。
+ *
+ * 序列内部【不】逐句 cancel：依赖 Web Speech 的自然队列（上一句 onend 后再 speak 下一句），
+ * 避免 cancel 切断尾音造成「胡言乱语」杂音。仅在开头 cancel 一次，
+ * 清掉点击手势里 primeSpeech 可能还在念的单词，防止与序列首句重叠。
  */
 export async function playSequence(
   items: { text: string; lang: SpeakLang }[],
@@ -250,6 +249,13 @@ export async function playSequence(
   const gap = opts?.gapMs ?? 1000
   const myId = ++seqId
   const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+  // 开头清一次：取消点击手势里 primeSpeech 可能还在念的单词，避免与序列第一句重叠。
+  try {
+    window.speechSynthesis.cancel()
+  } catch {
+    /* 忽略 */
+  }
+  await delay(80)
   for (const item of items) {
     if (myId !== seqId) return
     for (let r = 0; r < repeat; r++) {
