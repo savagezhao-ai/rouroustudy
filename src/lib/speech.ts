@@ -175,40 +175,50 @@ function speakNow(text: string, lang: SpeakLang = 'en'): Promise<void> {
     const synth = window.speechSynthesis
     const s = cachedSpeech
     refreshVoices()
-    const u = new SpeechSynthesisUtterance(text)
     const v = lang === 'zh' ? pickDefaultVoice('zh') : (findVoice(s.voiceURI) ?? pickDefaultVoice())
-    if (v) {
-      u.voice = v
-      u.lang = v.lang
-    } else {
-      u.lang = lang === 'zh' ? 'zh-CN' : 'en-US'
-    }
-    u.rate = s.rate > 0 ? s.rate : DEFAULT_SPEECH.rate
-    let done = false
-    const finish = () => {
-      if (!done) {
-        done = true
-        resolve()
-      }
-    }
-    u.onend = finish
-    u.onerror = finish
-    // Safari 上 onend 有时不触发，按文本长度估算一个兜底时长
-    const est = Math.max(800, (text.length * 70) / (u.rate || 1) + 500)
-    const to = setTimeout(finish, est + 2000)
+    // 关键：朗读前先彻底取消上一段（含序列里上一句），再短暂停顿让取消生效。
+    // 否则在连续朗读时，浏览器常把选定音色弄丢、回落到默认音色（听感上比单独读单词更"廉价"），
+    // 也可能让上一句尾音混入当前句开头。手动点 🔊 也是这个路径，保证两者音色一致。
     try {
-      synth.resume()
+      synth.cancel()
     } catch {
       /* 忽略 */
     }
-    try {
-      synth.speak(u)
-    } catch {
-      clearTimeout(to)
-      finish()
+    const start = () => {
+      const u = new SpeechSynthesisUtterance(text)
+      if (v) {
+        u.voice = v
+        u.lang = v.lang
+      } else {
+        u.lang = lang === 'zh' ? 'zh-CN' : 'en-US'
+      }
+      u.rate = s.rate > 0 ? s.rate : DEFAULT_SPEECH.rate
+      let done = false
+      const finish = () => {
+        if (!done) {
+          done = true
+          resolve()
+        }
+      }
+      u.onend = finish
+      u.onerror = finish
+      // Safari 上 onend 有时不触发，按文本长度估算一个兜底时长
+      const est = Math.max(800, (text.length * 70) / (u.rate || 1) + 500)
+      const to = setTimeout(finish, est + 2000)
+      try {
+        synth.resume()
+      } catch {
+        /* 忽略 */
+      }
+      try {
+        synth.speak(u)
+      } catch {
+        clearTimeout(to)
+        finish()
+      }
     }
-    // 防止 timeout 泄漏：finish 后若 Promise 已 resolve，setTimeout 回调是空操作
-    void to
+    // 让 cancel 生效：Chrome 在 cancel 后立即 speak 会吞掉本次发音
+    setTimeout(start, 50)
   })
 }
 
@@ -252,17 +262,96 @@ export async function playSequence(
 }
 
 /**
- * 去掉释义前面的词性前缀（"n. " / "v. "），与词典面板显示、手动 🔊 朗读保持一致。
- * 必须与 src/components/DictSheet.tsx 里的 splitPos 行为相同，否则自动连读会多出
- * "n./v." 这类字母杂音（之前自动连读直接用 entry.definition 原始串，导致每句英文开头有杂音）。
+ * 把释义拆成「词性 + 正文」，与词典面板显示、手动 🔊 朗读保持一致。
+ * 行为必须与 src/components/DictSheet.tsx 里的 splitPos 完全相同。
  */
-function stripPos(line: string): string {
-  return line.replace(/^[a-z]{1,5}\.\s*/i, '').trim()
+function splitPos(line: string): { pos: string; text: string } {
+  const m = /^([a-z]{1,5})\.\s*(.*)$/i.exec((line ?? '').trim())
+  return m ? { pos: m[1], text: m[2] } : { pos: '', text: (line ?? '').trim() }
+}
+
+/** 词性 -> 中文朗读词（n 名词 / vt 及物动词 / vi 不及物动词 …） */
+const POS_ZH: Record<string, string> = {
+  n: '名词',
+  v: '动词',
+  vt: '及物动词',
+  vi: '不及物动词',
+  vn: '动名词',
+  vlink: '系动词',
+  link: '系动词',
+  adj: '形容词',
+  adv: '副词',
+  prep: '介词',
+  conj: '连词',
+  pron: '代词',
+  art: '冠词',
+  num: '数词',
+  int: '感叹词',
+  excl: '感叹词',
+  abbr: '缩写',
+  aux: '助动词',
+  det: '限定词',
+  modal: '情态动词',
+  inf: '不定式',
+  ger: '动名词',
+  phr: '短语',
+  phrv: '短语动词',
+  pl: '复数',
+  sb: '某人',
+  sth: '某物',
+  c: '可数',
+  u: '不可数',
+  esp: '尤其',
+  usu: '通常',
+  ie: '也就是',
+  eg: '例如',
+  attr: '作定语',
+  pred: '作表语',
+}
+
+/** 词性 -> 英文朗读词（noun / transitive verb / intransitive verb …） */
+const POS_EN: Record<string, string> = {
+  n: 'noun',
+  v: 'verb',
+  vt: 'transitive verb',
+  vi: 'intransitive verb',
+  vn: 'verbal noun',
+  vlink: 'linking verb',
+  link: 'linking verb',
+  adj: 'adjective',
+  adv: 'adverb',
+  prep: 'preposition',
+  conj: 'conjunction',
+  pron: 'pronoun',
+  art: 'article',
+  num: 'numeral',
+  int: 'interjection',
+  excl: 'exclamation',
+  abbr: 'abbreviation',
+  aux: 'auxiliary verb',
+  det: 'determiner',
+  modal: 'modal verb',
+  inf: 'infinitive',
+  ger: 'gerund',
+  phr: 'phrase',
+  phrv: 'phrasal verb',
+  pl: 'plural',
+  sb: 'somebody',
+  sth: 'something',
+  c: 'countable',
+  u: 'uncountable',
+  esp: 'especially',
+  usu: 'usually',
+  ie: 'that is',
+  eg: 'for example',
+  attr: 'attributive',
+  pred: 'predicative',
 }
 
 /**
- * 查词自动朗读：单词读三遍（每次间隔 1 秒），然后依次朗读中文释义、英文解释。
- * 用户若手动点击任意 🔊，会立即中断自动连读并改读所点击内容。
+ * 查词自动朗读：单词读三遍（每次间隔 1 秒），然后逐条朗读中文释义、英文解释。
+ * 每条释义先以「对应语言」念出词性（中文说"名词/及物动词…"，英文说"noun/transitive verb…"），
+ * 停顿 1 秒后再念具体解释；英文同理。用户若手动点击任意 🔊，会立即中断自动连读。
  *
  * 若打开/查询的手势里已经念过该词（primeSpeech 完成解锁的那一遍），
  * 这里只补足到三遍，避免重复朗读四遍。
@@ -274,15 +363,21 @@ export function autoReadEntry(entry: DictEntry) {
   const items: { text: string; lang: SpeakLang }[] = []
   // 单词读三遍（已念过一遍则补足两遍）
   for (let i = 0; i < wordRepeat; i++) items.push({ text: entry.word, lang: 'en' })
-  // 中文释义（剥掉词性前缀，避免把 "n." 念成字母杂音）
-  for (const t of entry.translation) {
-    const text = stripPos(t)
-    if (text) items.push({ text, lang: 'zh' })
-  }
-  // 英文解释（同上，必须剥掉 "n./v." 前缀）
-  for (const d of entry.definition) {
-    const text = stripPos(d)
-    if (text) items.push({ text, lang: 'en' })
+  const n = Math.max(entry.translation.length, entry.definition.length)
+  for (let i = 0; i < n; i++) {
+    const t = splitPos(entry.translation[i])
+    const d = splitPos(entry.definition[i])
+    const pos = t.pos || d.pos
+    // 中文：先念词性，停顿 1 秒（playSequence 的项间间隔），再念中文释义
+    if (t.text) {
+      if (pos && POS_ZH[pos]) items.push({ text: POS_ZH[pos], lang: 'zh' })
+      items.push({ text: t.text, lang: 'zh' })
+    }
+    // 英文：同样先念对应英文词性，停顿后再念英文解释
+    if (d.text) {
+      if (pos && POS_EN[pos]) items.push({ text: POS_EN[pos], lang: 'en' })
+      items.push({ text: d.text, lang: 'en' })
+    }
   }
   void playSequence(items, { repeat: 1, gapMs: 1000 })
 }
