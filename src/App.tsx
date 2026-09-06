@@ -6,6 +6,7 @@ import { db, getMeta, setMeta, migrateLegacyWords, migrateWordIds, wordId } from
 import { deckStats, type DeckStat } from './lib/study'
 import { starterDeck } from './data/starterDeck'
 import { loadVoices, loadSpeechSettings, primeSpeech } from './lib/speech'
+import { dictStatus } from './lib/dictionary'
 import { getCurrentUser, getUsers, setCurrentUser, createUser, deleteUser, DEF_ID, type User } from './lib/users'
 import { Dialog, uiPrompt, uiConfirm, uiAlert } from './components/Dialog'
 import DictSheet from './components/DictSheet'
@@ -25,10 +26,19 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('normal')
   const [me] = useState<User>(() => getCurrentUser())
   const [users] = useState<User[]>(() => getUsers())
+  // 当前已装入的词典版本（来自 manifest.version，随数据源变化），显示在页脚便于核对
+  const [dictVer, setDictVer] = useState('')
 
   useEffect(() => {
     loadVoices()
     loadSpeechSettings()
+  }, [])
+
+  // 读取已装入的词典版本号，让用户一眼确认装的是不是最新的牛津词典
+  useEffect(() => {
+    dictStatus()
+      .then((s) => setDictVer(s.version || s.availableVersion || ''))
+      .catch(() => setDictVer(''))
   }, [])
 
   const refresh = useCallback(async () => {
@@ -173,6 +183,9 @@ export default function App() {
           记词星 · v{import.meta.env.VITE_BUILD_VERSION ?? 'dev'} ·{' '}
           {String(import.meta.env.VITE_BUILD_TIME ?? '')}
         </span>
+        {dictVer && (
+          <span className="footer-dict">词典 {dictVer}</span>
+        )}
         <button
           type="button"
           className="footer-force"

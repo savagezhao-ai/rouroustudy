@@ -55,8 +55,11 @@ interface DictDB extends DBSchema {
 }
 
 const DB_NAME = 'rouroustudy_dict'
-const MANIFEST_URL = `${BASE}dict/manifest.json`
-const DATA_URL = `${BASE}dict/dict-core.jsonl.gz`
+// 词典请求带版本号旁路：每次发版 ?v 都不同 → 浏览器 HTTP 缓存、CDN 全部失效，
+// 杜绝「数据换了却因缓存一直读旧的」。版本号用构建号（与 SW 同源，必随发版变化）。
+const CACHE_BUST = import.meta.env.VITE_BUILD_VERSION ?? 'dev'
+const MANIFEST_URL = `${BASE}dict/manifest.json?v=${CACHE_BUST}`
+const DATA_URL = `${BASE}dict/dict-core.jsonl.gz?v=${CACHE_BUST}`
 
 let conn: Promise<IDBPDatabase<DictDB>> | null = null
 

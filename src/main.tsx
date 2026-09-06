@@ -22,11 +22,21 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
   let refreshing = false
   let applied = false
 
-  // 强制清空所有 Service Worker 并硬刷新——用户最后的「救命」按钮
+  // 强制清空所有 Service Worker + 本地词典库并硬刷新——用户最后的「救命」按钮
+  // 关键：除了注销 SW，还直接删除 IndexedDB 里的词典库（rouroustudy_dict），
+  // 否则重载后 App 仍可能从旧库读数据。删除后必定重新联网下载干净词典。
   const forceReload = async () => {
     try {
       const regs = await navigator.serviceWorker.getRegistrations()
       await Promise.all(regs.map((r) => r.unregister()))
+    } catch {
+      /* 忽略 */
+    }
+    try {
+      await new Promise<void>((resolve) => {
+        const req = indexedDB.deleteDatabase('rouroustudy_dict')
+        req.onsuccess = req.onerror = req.onblocked = () => resolve()
+      })
     } catch {
       /* 忽略 */
     }

@@ -218,7 +218,8 @@ describe('真实数据包', () => {
     await lib.resetDictDb()
     await lib.loadDict()
 
-    expect(await lib.dictSize()).toBeGreaterThan(30000)
+    // 入库词条数应与数据包 manifest 的 count 一致（数据源无关，牛津约 2 万、旧 ECDICT 约 3.8 万）
+    expect(await lib.dictSize()).toBe(manifest.count)
 
     // 常见词
     const dog = await lib.lookupDict('dog')
