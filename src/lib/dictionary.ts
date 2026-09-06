@@ -1,5 +1,6 @@
 // 内嵌词典：数据源 ECDICT（MIT），首次使用时下载压缩包并写入 IndexedDB，之后完全离线查询。
-// 数据由 scripts/build-dict.mjs 生成到 public/dict/，约 3.8 万词条、3.4MB。
+// 数据由 .dict-build/build_oxford.py 从牛津英汉双解（stardict-oxford-gb）生成到
+// public/dict/，约 2 万词条、2MB。
 //
 // 与业务数据库分开存放：词典是只读的共享资源，不随用户切换而变，
 // 所以单独一个数据库，避免每个用户各存一份。

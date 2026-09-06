@@ -1,5 +1,5 @@
 // 词典面板：底部弹层形式，复习中途查词不会打断当前进度。
-// 数据来自 ECDICT，首次使用需下载约 3.4MB，之后完全离线。
+// 数据来自牛津英汉双解，首次使用需下载约 2MB，之后完全离线。
 import { useEffect, useRef, useState } from 'react'
 import {
   dictStatus,
@@ -130,9 +130,9 @@ export default function DictSheet({
         {status && !status.ready && (
           <div className="dict-download">
             <p className="dict-dl-title">首次使用需要下载词典数据</p>
-            <p className="hint">
-              约 {formatBytes(status.bytes || 3.4e6)}，下载一次后离线可用。
-              收录 3.8 万词条，含音标、中英双解释义、词形变化与考试级别标记。
+              <p className="hint">
+              约 {formatBytes(status.bytes || 2.1e6)}，下载一次后离线可用。
+              收录 2 万余常用词，含音标、中英双解释义、词形变化与考试级别标记。
             </p>
             {busy ? (
               <div className="dict-progress">
@@ -149,7 +149,7 @@ export default function DictSheet({
               </div>
             ) : (
               <button className="btn-primary" onClick={handleDownload}>
-                下载词典（{formatBytes(status.bytes || 3.4e6)}）
+                下载词典（{formatBytes(status.bytes || 2.1e6)}）
               </button>
             )}
             {error && <p className="msg">{error}</p>}
@@ -203,7 +203,7 @@ export default function DictSheet({
 
             {searched && !entry && (
               <p className="hint dict-empty">
-                没查到「{query}」，换个拼写试试（词典收录 3.8 万常用词）
+                没查到「{query}」，换个拼写试试（词典收录 2 万余常用词）
               </p>
             )}
 
