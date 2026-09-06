@@ -11,6 +11,7 @@
 - **Anki 式翻卡复习** — 正面看单词 → 点击翻面查全部释义 → 忘记/困难/良好/简单四档自评，忘记的卡片自动追加队尾
 - **多用户** — 只需用户名（无密码），每个用户独立 IndexedDB 数据库，学习进度完全隔离；默认用户 def 不可删除
 - **多词库管理** — 可同时管理多个词库，单独学习某个词库，每库每天新词上限独立控制
+- **内置英汉双解词典** — 3.8 万词条，含音标、中英双解释义、词形变化与考试级别（中考/高考/四六级/牛津 3000/柯林斯星级）；查词时逐条释义可点击朗读；复习中途点🔍直接查当前单词
 - **数据备份** — 一键导出全部学习进度（词库、单词、卡片状态、复习记录、设置）为 JSON 文件，换设备或清缓存后可完整恢复，支持覆盖与合并两种导入方式
 - **发音设置** — Web Speech API，支持音色选择和语速调节
 - **PWA 离线可用** — 可安装到手机桌面，Service Worker 预缓存全部资源，无网络也能复习
@@ -45,7 +46,14 @@ npm run preview    # 本地预览构建产物
 
    https://github.com/andylee1890/AnkiShare/releases/download/primary-school-vocabulary-v1.0.0/Primary-School-English-Vocabulary.apkg
 
-### 3. 开始学习
+### 3. 查词典
+
+- 首页点「📖 查词典」，或复习时点卡片上的 🔍 / 顶部「📖 查词」，直接查当前单词
+- 首次使用需下载词典数据约 3.4MB，之后完全离线可用
+- 释义一条一条往下排，每条右侧 🔊 可朗读英文释义；点单词旁的 🔊 朗读单词
+- 支持查变形词：`dogs` → `dog`、`ran` → `run`、`went` → `go`
+
+### 4. 开始学习
 
 - 首页选好词库，点「开始学习」，每天默认 10 个新词 + 全部到期复习词
 - 复习采用 Anki 翻卡模式：先看单词想一想 → 点击卡片翻面查看释义 → 根据记忆情况自评四档（忘记/困难/良好/简单），算法会据此安排下次复习时间
@@ -54,7 +62,7 @@ npm run preview    # 本地预览构建产物
 - 全部完成后可「整库循环练一轮」巩固
 - 电脑上支持键盘：空格翻面，1-4 键评分
 
-### 4. 数据备份与恢复
+### 5. 数据备份与恢复
 
 学习进度只存在浏览器本地，建议定期备份：
 
@@ -67,8 +75,20 @@ npm run preview    # 本地预览构建产物
 
 全部数据存在浏览器本地 IndexedDB（按用户分库），不上传任何服务器。词库管理里可导入 Anki 官网下载的 .apkg 词库文件、JSON 词表，或手动添加单词。
 
+词典数据单独存放在 `rouroustudy_dict` 库（所有用户共用，不随账号切换而变）。
+
+### 更新词典数据
+
+词典数据由 `npm run build:dict` 从 [ECDICT](https://github.com/skywind3000/ecdict) 生成，产物提交在 `public/dict/`（约 3.4MB）。原始 CSV 有 77 万词条，这里按学习价值筛到 3.8 万条：只收单词（去掉短语）、必须有中文释义，且有考试级别标记或位于当代语料库词频前 4 万。
+
+```bash
+npm run build:dict                       # 自动下载 CSV 到 .cache/ 再生成
+node scripts/build-dict.mjs --csv 路径    # 用本地已有的 CSV
+```
+
 ## 致谢
 
+- [ECDICT](https://github.com/skywind3000/ecdict)（MIT）— 英汉双解词典数据
 - [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs)（MIT）— FSRS 算法的 TypeScript 实现
 - [sql.js](https://github.com/sql-js/sql.js)（MIT）— 浏览器端 SQLite
 - [fflate](https://github.com/101arrowz/fflate)（MIT）— 高性能解压缩

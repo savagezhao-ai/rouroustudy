@@ -26,6 +26,19 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2,wasm}'],
+        runtimeCaching: [
+          {
+            // 词典数据 3.4MB，不做预缓存：只在用户第一次查词时按需下载，
+            // 缓存下来后即使清了 IndexedDB 也不用重新下载。
+            urlPattern: ({ url }) => url.pathname.includes('/dict/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'dict-data',
+              expiration: { maxEntries: 4 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],

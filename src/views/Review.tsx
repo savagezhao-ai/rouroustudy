@@ -47,10 +47,12 @@ export default function Review({
   deckId,
   practice: initialPractice = false,
   onExit,
+  onLookupWord,
 }: {
   deckId: string
   practice?: boolean
   onExit: () => void
+  onLookupWord?: (word: string) => void
 }) {
   const [queue, setQueue] = useState<QueueItem[] | null>(null)
   const [idx, setIdx] = useState(0)
@@ -171,6 +173,11 @@ export default function Review({
         <button className="btn-link" onClick={onExit}>
           退出
         </button>
+        {onLookupWord && (
+          <button className="btn-link" onClick={() => onLookupWord(item.word.word)}>
+            📖 查词
+          </button>
+        )}
         <span className="progress">
           {idx + 1} / {queue.length}
           {practice && <em className="badge-new">循环练习</em>}
@@ -198,6 +205,19 @@ export default function Review({
           >
             🔊
           </button>
+          {onLookupWord && (
+            <button
+              className="btn-speak"
+              onClick={(e) => {
+                e.stopPropagation()
+                onLookupWord(item.word.word)
+              }}
+              aria-label="在词典中查这个单词"
+              title="查词典"
+            >
+              🔍
+            </button>
+          )}
         </div>
 
         {revealed && (

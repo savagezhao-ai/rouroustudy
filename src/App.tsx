@@ -8,12 +8,15 @@ import { starterDeck } from './data/starterDeck'
 import { loadVoices } from './lib/speech'
 import { getCurrentUser, getUsers, setCurrentUser, createUser, deleteUser, DEF_ID, type User } from './lib/users'
 import { Dialog, uiPrompt, uiConfirm, uiAlert } from './components/Dialog'
+import DictSheet from './components/DictSheet'
 
 type View = 'home' | 'review' | 'manage'
 type Mode = 'normal' | 'practice'
 
 export default function App() {
   const [view, setView] = useState<View>('home')
+  // 词典面板：以弹层形式打开，从复习页进入也不会丢掉当前进度
+  const [dictWord, setDictWord] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
   const [decks, setDecks] = useState<DeckStat[]>([])
   const [streak, setStreak] = useState(0)
@@ -127,6 +130,7 @@ export default function App() {
             setView('review')
           }}
           onManage={() => setView('manage')}
+          onDict={() => setDictWord('')}
           onSwitchUser={switchUser}
           onCreateUser={handleCreateUser}
           onDeleteUser={handleDeleteUser}
@@ -137,6 +141,7 @@ export default function App() {
           key={sessionKey}
           deckId={activeDeckId}
           practice={mode === 'practice'}
+          onLookupWord={(w) => setDictWord(w)}
           onExit={async () => {
             await refresh()
             setView('home')
@@ -153,6 +158,9 @@ export default function App() {
         />
       )}
       <Dialog />
+      {dictWord !== null && (
+        <DictSheet word={dictWord} onClose={() => setDictWord(null)} />
+      )}
     </div>
   )
 }

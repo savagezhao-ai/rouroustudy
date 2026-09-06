@@ -12,6 +12,7 @@ export default function Home({
   onStart,
   onPractice,
   onManage,
+  onDict,
   onSwitchUser,
   onCreateUser,
   onDeleteUser,
@@ -25,6 +26,7 @@ export default function Home({
   onStart: () => void
   onPractice: () => void
   onManage: () => void
+  onDict: () => void
   onSwitchUser: (id: string) => void
   onCreateUser: () => void
   onDeleteUser: () => void
@@ -108,9 +110,14 @@ export default function Home({
         </>
       )}
 
-      <button className="btn-ghost" onClick={onManage}>
-        词库管理
-      </button>
+      <div className="home-actions">
+        <button className="btn-ghost" onClick={onManage}>
+          词库管理
+        </button>
+        <button className="btn-ghost" onClick={onDict}>
+          📖 查词典
+        </button>
+      </div>
       <p className="hint">数据保存在本机浏览器，无需联网</p>
     </div>
   )

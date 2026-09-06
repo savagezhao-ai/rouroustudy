@@ -37,9 +37,32 @@ export function englishVoices(): SpeechSynthesisVoice[] {
 
 // 优先级：macOS/iOS 高质量增强音色在前
 const PREFERRED = ['Samantha', 'Daniel', 'Karen', 'Ava', 'Aria', 'Jenny', 'Google US English', 'Moira', 'Tessa']
+// 中文音色优先级：Tingting（大陆）在前，避免挑到粤语/台语音色
+const PREFERRED_ZH = ['Tingting', 'Ting-Ting', 'Meijia', 'Sinji', 'Google 普通话', 'Yaoyao', 'Huihui']
 
-export function pickDefaultVoice(): SpeechSynthesisVoice | undefined {
-  const en = englishVoices()
+export type SpeakLang = 'en' | 'zh'
+
+function voicesOf(lang: SpeakLang): SpeechSynthesisVoice[] {
+  if (!('speechSynthesis' in window)) return []
+  if (voices.length === 0) refreshVoices()
+  const prefix = lang === 'zh' ? 'zh' : 'en'
+  // 中文还要排除 yue（粤语）等方言
+  return voices.filter((v) => {
+    const l = v.lang.toLowerCase().replace('_', '-')
+    return l.startsWith(prefix) && (lang === 'en' || l.startsWith('zh'))
+  })
+}
+
+export function pickDefaultVoice(lang: SpeakLang = 'en'): SpeechSynthesisVoice | undefined {
+  if (lang === 'zh') {
+    const zh = voicesOf('zh')
+    for (const name of PREFERRED_ZH) {
+      const hit = zh.find((v) => v.name.includes(name))
+      if (hit) return hit
+    }
+    return zh.find((v) => v.lang.replace('_', '-').toLowerCase().startsWith('zh-cn')) ?? zh[0]
+  }
+  const en = voicesOf('en')
   for (const name of PREFERRED) {
     const hit = en.find((v) => v.name.includes(name))
     if (hit) return hit
@@ -58,19 +81,21 @@ function findVoice(uri: string): SpeechSynthesisVoice | undefined {
   )
 }
 
-export async function speak(text: string) {
+/** 朗读文本。lang='zh' 时用中文音色（词典里的中文释义），默认英文 */
+export async function speak(text: string, lang: SpeakLang = 'en') {
   if (!('speechSynthesis' in window)) return
   const s = await getMeta<SpeechSettings>('speech', DEFAULT_SPEECH)
   const synth = window.speechSynthesis
   // 每次发音前重新拉取音色列表，避免用陈旧/空列表导致回落到默认音色
   refreshVoices()
   const u = new SpeechSynthesisUtterance(text)
-  const v = findVoice(s.voiceURI) ?? pickDefaultVoice()
+  // 英文沿用用户设置的音色；中文单独挑，避免拿英语音色念中文
+  const v = lang === 'zh' ? pickDefaultVoice('zh') : (findVoice(s.voiceURI) ?? pickDefaultVoice())
   if (v) {
     u.voice = v
     u.lang = v.lang
   } else {
-    u.lang = 'en-US'
+    u.lang = lang === 'zh' ? 'zh-CN' : 'en-US'
   }
   u.rate = s.rate > 0 ? s.rate : DEFAULT_SPEECH.rate
   const go = () => synth.speak(u)

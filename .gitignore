@@ -12,6 +12,8 @@ dist
 dist-ssr
 *.local
 .npm-cache
+# 词典原始数据（63MB CSV，由 build:dict 下载；产物 public/dict/ 需要提交）
+.cache
 
 # Editor directories and files
 .vscode/*

@@ -7,6 +7,7 @@
     "dev": "vite",
     "prepare": "node scripts/make-icons.mjs",
     "build": "node scripts/make-icons.mjs && tsc -b && vite build",
+    "build:dict": "node scripts/build-dict.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint",
