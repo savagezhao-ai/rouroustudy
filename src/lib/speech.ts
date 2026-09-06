@@ -163,10 +163,17 @@ export function cancelSpeech() {
 }
 
 /**
- * 内部：同步朗读一段文本，返回在朗读结束（或超时兜底）后才 resolve 的 Promise。
- * 不修改 seqId，仅供自动连读序列使用。
+ * 内部：朗读一段文本，返回在「朗读真正结束（或超时兜底）」后才 resolve 的 Promise。
+ * 不修改 seqId，供自动连读序列与手动朗读共用。
+ *
+ * 时序设计（彻底消除「结尾乱读/前后句叠加」）：
+ * - 不在每句之间调用 cancel()：cancel 会切碎上一句残留尾音、被下一句混进来造成杂音。
+ * - 以「按文本长度充裕估算」的主计时器作为收尾基准；Web Speech 的 onend 在 Safari/WebKit
+ *   上偶尔会【提前】触发（音频其实还没播完），若直接以 onend 收尾，下一句就会叠到尾音上
+ *   （长英文句尤其明显，表现为「最后一句混乱」）。故：onend 若在最短时长前触发视为误报忽略，
+ *   直到主计时器自然收尾，保证整句播完、下一句不提前叠加。
  */
-function speakNow(text: string, lang: SpeakLang = 'en'): Promise<void> {
+function speakOne(text: string, lang: SpeakLang = 'en'): Promise<void> {
   return new Promise((resolve) => {
     if (!hasSynth() || !text) {
       resolve()
@@ -176,11 +183,6 @@ function speakNow(text: string, lang: SpeakLang = 'en'): Promise<void> {
     const s = cachedSpeech
     refreshVoices()
     const v = lang === 'zh' ? pickDefaultVoice('zh') : (findVoice(s.voiceURI) ?? pickDefaultVoice())
-    // 注意：这里【不要】调用 cancel()。
-    // 逐句 cancel 会切断上一句在音频缓冲里残留的尾音，下一句把残音切碎混进来，
-    // 在 Chrome/WebKit 上表现为「胡言乱语」杂音（某些长序列单词如 test 尤其明显）。
-    // 改为依赖 Web Speech 的自然队列：上一句 onend 之后再由 playSequence 调用本函数，
-    // 每句都重新指定音色（u.voice），即可避免回落默认音色、又不会产生残音杂音。
     const u = new SpeechSynthesisUtterance(text)
     if (v) {
       u.voice = v
@@ -196,13 +198,9 @@ function speakNow(text: string, lang: SpeakLang = 'en'): Promise<void> {
         resolve()
       }
     }
-    // 按文本长度估算一个充裕的朗读时长，作为「主计时器」。
-    // Safari/WebKit 上 onend 偶尔会【提前】触发（实际音频还没播完），若直接以 onend 收尾，
-    // 下一句就会叠到上一句尾音上、长英文句尤其容易糊成怪声（用户反馈「只有英文结尾有杂音」）。
-    // 因此：主计时器到点才允许收尾；onend 若在「最短时长」之前触发，视为误报直接忽略，
-    // 等到主计时器自然收尾，保证整句音频播完、下一句不会提前叠加。
-    const est = Math.max(900, (text.length * 95) / (u.rate || 1) + 1400)
-    const minMs = est * 0.55
+    // 充裕估算：系数放大、基础时长加长，确保覆盖绝大多数长句，避免下一句提前叠加
+    const est = Math.max(1200, (text.length * 110) / (u.rate || 1) + 1800)
+    const minMs = est * 0.6
     const startedAt = Date.now()
     const to = setTimeout(finish, est)
     u.onend = () => {
@@ -236,16 +234,16 @@ export function speak(text: string, lang: SpeakLang = 'en') {
     /* 忽略 */
   }
   // 等一小段让 cancel 生效、清掉残留音频，避免与所点内容重叠成杂音
-  setTimeout(() => void speakNow(text, lang), 80)
+  setTimeout(() => void speakOne(text, lang), 80)
 }
 
 /**
- * 自动连读序列：依次朗读 items，每项可重复 repeat 次、项间停顿 gapMs。
+ * 自动连读序列：依次朗读 items，项间停顿 gapMs。
  * 任意时刻若发生手动朗读（seqId 变化），序列立即中止。
  *
- * 序列内部【不】逐句 cancel：依赖 Web Speech 的自然队列（上一句 onend 后再 speak 下一句），
- * 避免 cancel 切断尾音造成「胡言乱语」杂音。仅在开头 cancel 一次，
- * 清掉点击手势里 primeSpeech 可能还在念的单词，防止与序列首句重叠。
+ * 序列内部【不】逐句 cancel：依赖 Web Speech 的自然队列（上一句结束后再 speak 下一句），
+ * 避免 cancel 切断尾音造成「胡言乱语」杂音。仅在开头 cancel 一次（清掉点击手势里
+ * primeSpeech 可能还在念的单词），并等待足够时长让其尾音落下，防止与序列首句重叠。
  */
 export async function playSequence(
   items: { text: string; lang: SpeakLang }[],
@@ -262,12 +260,12 @@ export async function playSequence(
   } catch {
     /* 忽略 */
   }
-  await delay(80)
+  await delay(150)
   for (const item of items) {
     if (myId !== seqId) return
     for (let r = 0; r < repeat; r++) {
       if (myId !== seqId) return
-      await speakNow(item.text, item.lang)
+      await speakOne(item.text, item.lang)
       if (r < repeat - 1) await delay(gap)
     }
     await delay(gap)
@@ -362,16 +360,18 @@ const POS_EN: Record<string, string> = {
 }
 
 /**
- * 查词自动朗读：单词读三遍（每次间隔 1 秒），然后依次朗读全部中文释义、再依次朗读全部英文解释。
- * 用户要求顺序：先中文、后英文解释。用户若手动点击任意 🔊，会立即中断自动连读。
+ * 查词自动朗读：单词读三遍（每次间隔 1 秒），然后逐「义项」朗读——每个义项先读中文（带词性），
+ * 再读英文（带词性）。用户若手动点击任意 🔊，会立即中断自动连读。
  *
- * 关键：中文与英文是「两条独立的列表」，各自用「自己那一行」的词性朗读，
- * 绝不跨列表借用词性。ECDICT 里中文条数与英文条数常常不等（如 test：中文 3 条 / 英文 4 条），
- * 旧逻辑用 Math.max 对齐后再把中文词性借给英文，导致词性错位（英文名词句前被安了「及物动词」），
- * 末尾还会露出一句只剩英文词性 "noun" 的怪声。这里彻底改为「各读各的」，从根本上消除错位。
+ * 关键一致性：朗读内容必须与词典面板【显示的内容完全一致】。面板 DictSheet 把中文 translation
+ * 与英文 definition 按行「配对」成义项（长度取中文条数），因此这里也用完全相同的配对方式遍历，
+ * 而不是独立遍历全部 definition——否则会读出面板上没有显示的英文释义（如 test 的第 4 条
+ * "a hard outer covering…"），造成「听到了但看不到」的错位感。
  *
- * 若打开/查询的手势里已经念过该词（primeSpeech 完成解锁的那一遍），
- * 这里只补足到三遍，避免重复朗读四遍。
+ * 词性按「连续相同则只念一次」朗读（名词：…；…；动词：…），避免 ECDICT 英文释义每条词性都标
+ * "n." 导致反复念 "noun" 的单调杂音；念完词性停顿 1 秒（playSequence 的项间间隔）再念正文。
+ *
+ * 若打开/查询的手势里已经念过该词（primeSpeech 完成解锁的那一遍），这里只补足到三遍。
  */
 export function autoReadEntry(entry: DictEntry) {
   if (!entry) return
@@ -380,19 +380,29 @@ export function autoReadEntry(entry: DictEntry) {
   const items: { text: string; lang: SpeakLang }[] = []
   // 单词读三遍（已念过一遍则补足两遍）
   for (let i = 0; i < wordRepeat; i++) items.push({ text: entry.word, lang: 'en' })
-  // 中文释义：每条用「自己那一行」的词性（句号停顿时由 playSequence 项间间隔提供）
-  for (const line of entry.translation) {
-    const t = splitPos(line)
-    if (!t.text) continue
-    if (t.pos && POS_ZH[t.pos]) items.push({ text: POS_ZH[t.pos], lang: 'zh' })
-    items.push({ text: t.text, lang: 'zh' })
-  }
-  // 英文解释：每条用「自己那一行」的词性，与中文数组完全独立，互不借用
-  for (const line of entry.definition) {
-    const d = splitPos(line)
-    if (!d.text) continue
-    if (d.pos && POS_EN[d.pos]) items.push({ text: POS_EN[d.pos], lang: 'en' })
-    items.push({ text: d.text, lang: 'en' })
+  // 逐义项（与面板 DictSheet 的 senses 完全一致：translation[i] 配对 definition[i]）
+  let lastZhPos = ''
+  let lastEnPos = ''
+  for (let i = 0; i < entry.translation.length; i++) {
+    const t = splitPos(entry.translation[i])
+    if (t.text) {
+      if (t.pos && POS_ZH[t.pos] && t.pos !== lastZhPos) {
+        items.push({ text: POS_ZH[t.pos], lang: 'zh' })
+        lastZhPos = t.pos
+      }
+      items.push({ text: t.text, lang: 'zh' })
+    }
+    const defLine = entry.definition[i]
+    if (defLine) {
+      const d = splitPos(defLine)
+      if (d.text) {
+        if (d.pos && POS_EN[d.pos] && d.pos !== lastEnPos) {
+          items.push({ text: POS_EN[d.pos], lang: 'en' })
+          lastEnPos = d.pos
+        }
+        items.push({ text: d.text, lang: 'en' })
+      }
+    }
   }
   void playSequence(items, { repeat: 1, gapMs: 1000 })
 }
