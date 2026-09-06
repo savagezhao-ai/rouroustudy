@@ -1,5 +1,6 @@
 // 发音模块：自动挑选高质量英语音色（Samantha/Daniel 等），设置里可手动换
 import { getMeta } from './db'
+import type { DictEntry } from './dictionary'
 
 export interface SpeechSettings {
   voiceURI: string
@@ -25,15 +26,19 @@ export function loadSpeechSettings() {
     .catch(() => {})
 }
 
+function hasSynth(): boolean {
+  return typeof window !== 'undefined' && 'speechSynthesis' in window
+}
+
 function refreshVoices(): SpeechSynthesisVoice[] {
-  if (!('speechSynthesis' in window)) return []
+  if (!hasSynth()) return []
   voices = window.speechSynthesis.getVoices()
   return voices
 }
 
 /** 应用启动时调用一次，持续追踪可用音色列表 */
 export function loadVoices() {
-  if (!('speechSynthesis' in window)) return
+  if (!hasSynth()) return
   refreshVoices()
   window.speechSynthesis.onvoiceschanged = () => refreshVoices()
   // 部分浏览器 voiceschanged 不可靠，兜底轮询几秒
@@ -45,7 +50,7 @@ export function loadVoices() {
 }
 
 export function englishVoices(): SpeechSynthesisVoice[] {
-  if (!('speechSynthesis' in window)) return []
+  if (!hasSynth()) return []
   if (voices.length === 0) refreshVoices()
   return voices.filter((v) => v.lang.toLowerCase().startsWith('en'))
 }
@@ -58,7 +63,7 @@ const PREFERRED_ZH = ['Tingting', 'Ting-Ting', 'Meijia', 'Sinji', 'Google 普通
 export type SpeakLang = 'en' | 'zh'
 
 function voicesOf(lang: SpeakLang): SpeechSynthesisVoice[] {
-  if (!('speechSynthesis' in window)) return []
+  if (!hasSynth()) return []
   if (voices.length === 0) refreshVoices()
   const prefix = lang === 'zh' ? 'zh' : 'en'
   // 中文还要排除 yue（粤语）等方言
@@ -96,42 +101,144 @@ function findVoice(uri: string): SpeechSynthesisVoice | undefined {
   )
 }
 
-/** 朗读文本。lang='zh' 时用中文音色（词典里的中文释义），默认英文 */
-export function speak(text: string, lang: SpeakLang = 'en') {
-  if (!('speechSynthesis' in window) || !text) return
-  const synth = window.speechSynthesis
-  // 同步读取已缓存的设置；绝不在这里 await，否则 Safari 会因脱离手势而不发声
-  const s = cachedSpeech
-  // 每次发音前重新拉取音色列表，避免用陈旧/空列表导致回落到默认音色
-  refreshVoices()
-  const u = new SpeechSynthesisUtterance(text)
-  // 英文沿用用户设置的音色；中文单独挑，避免拿英语音色念中文
-  const v = lang === 'zh' ? pickDefaultVoice('zh') : (findVoice(s.voiceURI) ?? pickDefaultVoice())
-  if (v) {
-    u.voice = v
-    u.lang = v.lang
-  } else {
-    u.lang = lang === 'zh' ? 'zh-CN' : 'en-US'
-  }
-  u.rate = s.rate > 0 ? s.rate : DEFAULT_SPEECH.rate
-  // Safari/iOS：合成器常处于 paused 状态，先 resume 再 speak，否则静默失败
+// 当前自动连读序列的令牌；手动朗读会使其自增，从而让正在进行的序列在下一句前中止
+let seqId = 0
+
+/**
+ * 在「用户点击手势内」同步调用一次以解锁 Safari/iOS 的语音合成。
+ * Safari 在没有任何手势内的 speak() 时，后续的异步 speak() 会被静默忽略。
+ * 传一个几乎无声的空文本即可完成解锁，不影响后续发音。
+ */
+export function primeSpeech() {
+  if (!hasSynth()) return
   try {
-    synth.resume()
+    const u = new SpeechSynthesisUtterance('')
+    u.volume = 0
+    u.rate = 5
+    window.speechSynthesis.speak(u)
+    // 立即取消，避免空文本被真的朗读出来
+    window.speechSynthesis.cancel()
   } catch {
     /* 忽略 */
   }
-  const go = () => {
+}
+
+/** 取消当前正在朗读/自动连读的内容 */
+export function cancelSpeech() {
+  if (!hasSynth()) return
+  seqId++
+  try {
+    window.speechSynthesis.cancel()
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/**
+ * 内部：同步朗读一段文本，返回在朗读结束（或超时兜底）后才 resolve 的 Promise。
+ * 不修改 seqId，仅供自动连读序列使用。
+ */
+function speakNow(text: string, lang: SpeakLang = 'en'): Promise<void> {
+  return new Promise((resolve) => {
+    if (!hasSynth() || !text) {
+      resolve()
+      return
+    }
+    const synth = window.speechSynthesis
+    const s = cachedSpeech
+    refreshVoices()
+    const u = new SpeechSynthesisUtterance(text)
+    const v = lang === 'zh' ? pickDefaultVoice('zh') : (findVoice(s.voiceURI) ?? pickDefaultVoice())
+    if (v) {
+      u.voice = v
+      u.lang = v.lang
+    } else {
+      u.lang = lang === 'zh' ? 'zh-CN' : 'en-US'
+    }
+    u.rate = s.rate > 0 ? s.rate : DEFAULT_SPEECH.rate
+    let done = false
+    const finish = () => {
+      if (!done) {
+        done = true
+        resolve()
+      }
+    }
+    u.onend = finish
+    u.onerror = finish
+    // Safari 上 onend 有时不触发，按文本长度估算一个兜底时长
+    const est = Math.max(800, (text.length * 70) / (u.rate || 1) + 500)
+    const to = setTimeout(finish, est + 2000)
     try {
-      synth.speak(u)
+      synth.resume()
     } catch {
       /* 忽略 */
     }
-  }
-  // 先 cancel 再立即 speak 在 Chrome 上会吞掉本次发音，稍微延迟
-  if (synth.speaking || synth.pending) {
+    try {
+      synth.speak(u)
+    } catch {
+      clearTimeout(to)
+      finish()
+    }
+    // 防止 timeout 泄漏：finish 后若 Promise 已 resolve，setTimeout 回调是空操作
+    void to
+  })
+}
+
+/** 手动朗读：取消任何正在进行的自动连读，立即朗读这段文本 */
+export function speak(text: string, lang: SpeakLang = 'en') {
+  if (!hasSynth() || !text) return
+  // 手动点击 -> 打断自动连读
+  seqId++
+  const synth = window.speechSynthesis
+  // 先取消再朗读
+  try {
     synth.cancel()
-    setTimeout(go, 80)
-  } else {
-    go()
+  } catch {
+    /* 忽略 */
   }
+  void speakNow(text, lang)
+}
+
+/**
+ * 自动连读序列：依次朗读 items，每项可重复 repeat 次、项间停顿 gapMs。
+ * 任意时刻若发生手动朗读（seqId 变化），序列立即中止。
+ */
+export async function playSequence(
+  items: { text: string; lang: SpeakLang }[],
+  opts?: { repeat?: number; gapMs?: number },
+) {
+  if (!hasSynth()) return
+  const repeat = opts?.repeat ?? 1
+  const gap = opts?.gapMs ?? 1000
+  const myId = ++seqId
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+  for (const item of items) {
+    if (myId !== seqId) return
+    for (let r = 0; r < repeat; r++) {
+      if (myId !== seqId) return
+      await speakNow(item.text, item.lang)
+      if (r < repeat - 1) await delay(gap)
+    }
+    await delay(gap)
+  }
+}
+
+/**
+ * 查词自动朗读：单词读三遍（每次间隔 1 秒），然后依次朗读中文释义、英文解释。
+ * 用户若手动点击任意 🔊，会立即中断自动连读并改读所点击内容。
+ */
+export function autoReadEntry(entry: DictEntry) {
+  if (!entry) return
+  const items: { text: string; lang: SpeakLang }[] = []
+  // 单词读三遍
+  for (let i = 0; i < 3; i++) items.push({ text: entry.word, lang: 'en' })
+  // 中文释义
+  for (const t of entry.translation) {
+    if (t) items.push({ text: t, lang: 'zh' })
+  }
+  // 英文解释
+  for (const d of entry.definition) {
+    if (d) items.push({ text: d, lang: 'en' })
+  }
+  void playSequence(items, { repeat: 1, gapMs: 1000 })
 }

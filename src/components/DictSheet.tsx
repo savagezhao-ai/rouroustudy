@@ -10,7 +10,7 @@ import {
   type DictHit,
   type DictStatus,
 } from '../lib/dictionary'
-import { speak } from '../lib/speech'
+import { speak, primeSpeech, autoReadEntry } from '../lib/speech'
 
 /** 考试/级别标签的中文名 */
 const EXAM_LABELS: Record<string, string> = {
@@ -96,6 +96,8 @@ export default function DictSheet({
     setQuery(q)
     const res = await lookupDict(q)
     setHit(res)
+    // 查到词后自动连读：单词三遍 -> 中文 -> 英文（用户手动点击会立即打断）
+    if (res?.entry) autoReadEntry(res.entry)
   }
 
   async function onInput(v: string) {
@@ -164,11 +166,20 @@ export default function DictSheet({
                 placeholder="输入要查的单词"
                 onChange={(e) => void onInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') void search(query)
+                  if (e.key === 'Enter') {
+                    primeSpeech()
+                    void search(query)
+                  }
                 }}
                 enterKeyHint="search"
               />
-              <button className="btn-primary" onClick={() => void search(query)}>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  primeSpeech()
+                  void search(query)
+                }}
+              >
                 查询
               </button>
             </div>
@@ -176,7 +187,14 @@ export default function DictSheet({
             {suggestions.length > 0 && (
               <div className="dict-suggest">
                 {suggestions.map((s) => (
-                  <button key={s} className="dict-suggest-item" onClick={() => void search(s)}>
+                  <button
+                    key={s}
+                    className="dict-suggest-item"
+                    onClick={() => {
+                      primeSpeech()
+                      void search(s)
+                    }}
+                  >
                     {s}
                   </button>
                 ))}
@@ -193,12 +211,19 @@ export default function DictSheet({
               <div className="dict-entry">
                 <div className="dict-word-row">
                   <div>
-                    <span className="dict-word">{entry.word}</span>
+                    <span
+                      className="dict-word dict-word-click"
+                      onClick={() => speak(entry.word, 'en')}
+                      role="button"
+                      title="点击朗读单词"
+                    >
+                      {entry.word}
+                    </span>
                     {entry.phonetic && <span className="phonetic">{entry.phonetic}</span>}
                   </div>
                   <button
                     className="btn-speak"
-                    onClick={() => void speak(entry.word)}
+                    onClick={() => speak(entry.word, 'en')}
                     aria-label="朗读单词"
                   >
                     🔊

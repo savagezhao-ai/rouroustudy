@@ -1052,6 +1052,23 @@ body {
   margin-right: 10px;
 }
 
+.dict-word-click {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0 2px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dict-word-click:hover {
+  background: var(--accent-soft, rgba(99, 102, 241, 0.12));
+  color: var(--accent, #6366f1);
+}
+
+.dict-word-click:active {
+  background: var(--accent, #6366f1);
+  color: #fff;
+}
+
 .dict-word-row .phonetic {
   margin: 0;
   color: var(--muted);

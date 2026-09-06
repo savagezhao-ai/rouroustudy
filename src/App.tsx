@@ -5,7 +5,7 @@ import Manage from './views/Manage'
 import { db, getMeta, setMeta, migrateLegacyWords, migrateWordIds, wordId } from './lib/db'
 import { deckStats, type DeckStat } from './lib/study'
 import { starterDeck } from './data/starterDeck'
-import { loadVoices, loadSpeechSettings } from './lib/speech'
+import { loadVoices, loadSpeechSettings, primeSpeech } from './lib/speech'
 import { getCurrentUser, getUsers, setCurrentUser, createUser, deleteUser, DEF_ID, type User } from './lib/users'
 import { Dialog, uiPrompt, uiConfirm, uiAlert } from './components/Dialog'
 import DictSheet from './components/DictSheet'
@@ -131,7 +131,10 @@ export default function App() {
             setView('review')
           }}
           onManage={() => setView('manage')}
-          onDict={() => setDictWord('')}
+          onDict={() => {
+            primeSpeech()
+            setDictWord('')
+          }}
           onSwitchUser={switchUser}
           onCreateUser={handleCreateUser}
           onDeleteUser={handleDeleteUser}
@@ -142,7 +145,10 @@ export default function App() {
           key={sessionKey}
           deckId={activeDeckId}
           practice={mode === 'practice'}
-          onLookupWord={(w) => setDictWord(w)}
+          onLookupWord={(w) => {
+            primeSpeech()
+            setDictWord(w)
+          }}
           onExit={async () => {
             await refresh()
             setView('home')
