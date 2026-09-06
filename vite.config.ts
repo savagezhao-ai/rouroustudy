@@ -65,12 +65,14 @@ export default defineConfig({
         cleanupOutdatedCaches: true, // 激活时清理旧版本 precache，避免缓存堆积
         runtimeCaching: [
           {
-            // 词典数据 3.4MB，不做预缓存：只在用户第一次查词时按需下载，
+            // 词典数据约 2MB，不做预缓存：只在用户第一次查词时按需下载，
             // 缓存下来后即使清了 IndexedDB 也不用重新下载。
+            // 关键：缓存名带上「构建版本号」，每次发版都换新缓存 → 旧词典数据自动失效，
+            // 否则 SW 会一直用 CacheFirst 把旧 gz 喂给 App，导致「明明换了词典却还在读甲壳」。
             urlPattern: ({ url }) => url.pathname.includes('/dict/'),
             handler: 'CacheFirst',
             options: {
-              cacheName: 'dict-data',
+              cacheName: `dict-data-${BUILD_VERSION}`,
               expiration: { maxEntries: 4 },
               cacheableResponse: { statuses: [0, 200] },
             },
