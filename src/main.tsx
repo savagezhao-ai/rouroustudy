@@ -9,23 +9,46 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-// ===== Service Worker 更新（彻底解决「Safari 一直停在旧版」）=====
-// 思路：
-//  1) 发现新 SW 在等待时，弹出「发现新版本 · 立即更新」横幅，用户点一下就更新；
-//  2) controllerchange 时自动刷新页面（autoUpdate 模式下 SW 会自行 skipWaiting）；
-//  3) Safari 独立 PWA 不会主动检查更新，定时轮询以捕捉新版本。
+// ===== Service Worker 更新（彻底解决「网站一直停在旧版」）=====
+// 关键修复：注册时给 sw.js 挂上「发布版本」查询参数（sw.js?v=版本号）。
+// 每次发版版本号都不同 → 浏览器认为这是一个全新的 SW 脚本 URL →
+// 必定绕过 HTTP/SW 缓存重新下载，从机制上杜绝「改了代码线上却不变」。
+// 配合：发现新 SW 自动接管 + controllerchange 自动刷新 + 每分钟轮询 + 手动「强制刷新」。
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  const base = import.meta.env.BASE_URL // e.g. /rouroustudy/
+  const version = import.meta.env.VITE_BUILD_VERSION ?? 'dev'
+  const swUrl = `${base}sw.js?v=${version}`
+
   let refreshing = false
   let applied = false
-  let waiting: ServiceWorker | null = null
+
+  // 强制清空所有 Service Worker 并硬刷新——用户最后的「救命」按钮
+  const forceReload = async () => {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map((r) => r.unregister()))
+    } catch {
+      /* 忽略 */
+    }
+    window.location.reload()
+  }
 
   const applyUpdate = () => {
     if (applied) return
     applied = true
-    waiting?.postMessage({ type: 'SKIP_WAITING' })
+    try {
+      navigator.serviceWorker.getRegistration(base).then((reg) => {
+        reg?.waiting?.postMessage({ type: 'SKIP_WAITING' })
+      })
+    } catch {
+      /* 忽略 */
+    }
     // 兜底：部分 Safari 不触发 controllerchange，1 秒后直接刷新
     setTimeout(() => {
-      if (!refreshing) window.location.reload()
+      if (!refreshing) {
+        refreshing = true
+        window.location.reload()
+      }
     }, 1000)
   }
 
@@ -37,13 +60,12 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 
   const promptIfWaiting = (reg: ServiceWorkerRegistration) => {
     if (reg.waiting && !document.getElementById('pwa-update-banner')) {
-      waiting = reg.waiting
       showUpdateBanner(applyUpdate)
     }
   }
 
   navigator.serviceWorker
-    .register(`${import.meta.env.BASE_URL}sw.js`)
+    .register(swUrl, { scope: base })
     .then((reg) => {
       promptIfWaiting(reg)
       reg.addEventListener('updatefound', () => {
@@ -51,7 +73,6 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
         if (!installing) return
         installing.addEventListener('statechange', () => {
           if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-            waiting = reg.waiting
             showUpdateBanner(applyUpdate)
           }
         })
@@ -64,6 +85,9 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     .catch(() => {
       /* 注册失败不阻塞正常使用 */
     })
+
+  // 暴露给页脚「强制刷新」按钮
+  ;(window as unknown as { __forcePwaReload?: () => void }).__forcePwaReload = forceReload
 }
 
 /** 在页面顶部注入一个更新提示横幅 */

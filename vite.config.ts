@@ -1,15 +1,49 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'node:child_process'
+
+// 发布版本号：commit 短哈希 + 构建时间（用于页脚展示与 SW 版本化，彻底解决「网站不更新」）
+function getGitHash(): string {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim()
+  } catch {
+    return 'dev'
+  }
+}
+const BUILD_VERSION = getGitHash()
+const BUILD_TIME = new Date()
+  .toISOString()
+  .slice(0, 16)
+  .replace('T', ' ')
+  .replace(/[-:]/g, '')
+
+/** 把发布版本写进 HTML 注释与 <meta>，方便用户「查看源代码」一眼确认线上版本 */
+function injectBuildInfo() {
+  return {
+    name: 'inject-build-info',
+    transformIndexHtml(html: string) {
+      const comment = `<!-- 记词星 发布版本: ${BUILD_VERSION} | 构建时间: ${BUILD_TIME} -->\n`
+      const meta = `<meta name="build-version" content="${BUILD_VERSION}">`
+      return html
+        .replace(/^<!DOCTYPE html>/i, `${comment}<!DOCTYPE html>`)
+        .replace(/<head>/i, `<head>\n    ${meta}`)
+    },
+  }
+}
 
 export default defineConfig({
   // GitHub Pages 部署在 /rouroustudy/ 子路径下
   base: '/rouroustudy/',
+  define: {
+    'import.meta.env.VITE_BUILD_VERSION': JSON.stringify(BUILD_VERSION),
+    'import.meta.env.VITE_BUILD_TIME': JSON.stringify(BUILD_TIME),
+  },
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: false, // 在 main.tsx 手动注册（带 controllerchange 自动刷新）
+      injectRegister: false, // 在 main.tsx 手动注册（带版本化 URL + controllerchange 自动刷新）
       includeAssets: ['pwa-192.png', 'pwa-512.png'],
       manifest: {
         name: '记词星 · 单词记忆助手',
@@ -26,6 +60,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2,wasm}'],
+        clientsClaim: true, // 新 SW 立即接管已有页面
+        skipWaiting: true, // 新 SW 安装后立即激活
+        cleanupOutdatedCaches: true, // 激活时清理旧版本 precache，避免缓存堆积
         runtimeCaching: [
           {
             // 词典数据 3.4MB，不做预缓存：只在用户第一次查词时按需下载，
@@ -41,5 +78,6 @@ export default defineConfig({
         ],
       },
     }),
+    injectBuildInfo(),
   ],
 })

@@ -168,6 +168,23 @@ export default function App() {
       {dictWord !== null && (
         <DictSheet word={dictWord} onClose={() => setDictWord(null)} />
       )}
+      <footer className="app-footer">
+        <span>
+          记词星 · v{import.meta.env.VITE_BUILD_VERSION ?? 'dev'} ·{' '}
+          {String(import.meta.env.VITE_BUILD_TIME ?? '')}
+        </span>
+        <button
+          type="button"
+          className="footer-force"
+          onClick={() => {
+            const f = (window as unknown as { __forcePwaReload?: () => void }).__forcePwaReload
+            if (f) f()
+            else window.location.reload()
+          }}
+        >
+          强制刷新
+        </button>
+      </footer>
     </div>
   )
 }

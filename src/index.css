@@ -1334,3 +1334,36 @@ body {
   }
 }
 
+/* 页脚发布版本 + 强制刷新 */
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px 16px 28px;
+  margin-top: auto;
+  color: var(--muted, #8a8a9a);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.footer-force {
+  border: 1px solid var(--border, #e2e2ec);
+  background: transparent;
+  color: var(--muted, #8a8a9a);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.footer-force:hover {
+  background: var(--accent-soft, rgba(99, 102, 241, 0.12));
+  color: var(--accent, #6366f1);
+}
+
+.footer-force:active {
+  transform: scale(0.96);
+}
+
