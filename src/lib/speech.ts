@@ -196,12 +196,19 @@ function speakNow(text: string, lang: SpeakLang = 'en'): Promise<void> {
         resolve()
       }
     }
-    u.onend = finish
+    // 按文本长度估算一个充裕的朗读时长，作为「主计时器」。
+    // Safari/WebKit 上 onend 偶尔会【提前】触发（实际音频还没播完），若直接以 onend 收尾，
+    // 下一句就会叠到上一句尾音上、长英文句尤其容易糊成怪声（用户反馈「只有英文结尾有杂音」）。
+    // 因此：主计时器到点才允许收尾；onend 若在「最短时长」之前触发，视为误报直接忽略，
+    // 等到主计时器自然收尾，保证整句音频播完、下一句不会提前叠加。
+    const est = Math.max(900, (text.length * 95) / (u.rate || 1) + 1400)
+    const minMs = est * 0.55
+    const startedAt = Date.now()
+    const to = setTimeout(finish, est)
+    u.onend = () => {
+      if (Date.now() - startedAt >= minMs) finish()
+    }
     u.onerror = finish
-    // Safari 上 onend 有时不触发，按文本长度估算一个充裕的兜底时长（偏长，宁等勿抢）
-    const est = Math.max(900, (text.length * 90) / (u.rate || 1) + 1200)
-    const to = setTimeout(finish, est + 3000)
-    void to
     try {
       synth.resume()
     } catch {
@@ -355,9 +362,13 @@ const POS_EN: Record<string, string> = {
 }
 
 /**
- * 查词自动朗读：单词读三遍（每次间隔 1 秒），然后逐条朗读中文释义、英文解释。
- * 每条释义先以「对应语言」念出词性（中文说"名词/及物动词…"，英文说"noun/transitive verb…"），
- * 停顿 1 秒后再念具体解释；英文同理。用户若手动点击任意 🔊，会立即中断自动连读。
+ * 查词自动朗读：单词读三遍（每次间隔 1 秒），然后依次朗读全部中文释义、再依次朗读全部英文解释。
+ * 用户要求顺序：先中文、后英文解释。用户若手动点击任意 🔊，会立即中断自动连读。
+ *
+ * 关键：中文与英文是「两条独立的列表」，各自用「自己那一行」的词性朗读，
+ * 绝不跨列表借用词性。ECDICT 里中文条数与英文条数常常不等（如 test：中文 3 条 / 英文 4 条），
+ * 旧逻辑用 Math.max 对齐后再把中文词性借给英文，导致词性错位（英文名词句前被安了「及物动词」），
+ * 末尾还会露出一句只剩英文词性 "noun" 的怪声。这里彻底改为「各读各的」，从根本上消除错位。
  *
  * 若打开/查询的手势里已经念过该词（primeSpeech 完成解锁的那一遍），
  * 这里只补足到三遍，避免重复朗读四遍。
@@ -369,21 +380,19 @@ export function autoReadEntry(entry: DictEntry) {
   const items: { text: string; lang: SpeakLang }[] = []
   // 单词读三遍（已念过一遍则补足两遍）
   for (let i = 0; i < wordRepeat; i++) items.push({ text: entry.word, lang: 'en' })
-  const n = Math.max(entry.translation.length, entry.definition.length)
-  for (let i = 0; i < n; i++) {
-    const t = splitPos(entry.translation[i])
-    const d = splitPos(entry.definition[i])
-    const pos = t.pos || d.pos
-    // 中文：先念词性，停顿 1 秒（playSequence 的项间间隔），再念中文释义
-    if (t.text) {
-      if (pos && POS_ZH[pos]) items.push({ text: POS_ZH[pos], lang: 'zh' })
-      items.push({ text: t.text, lang: 'zh' })
-    }
-    // 英文：同样先念对应英文词性，停顿后再念英文解释
-    if (d.text) {
-      if (pos && POS_EN[pos]) items.push({ text: POS_EN[pos], lang: 'en' })
-      items.push({ text: d.text, lang: 'en' })
-    }
+  // 中文释义：每条用「自己那一行」的词性（句号停顿时由 playSequence 项间间隔提供）
+  for (const line of entry.translation) {
+    const t = splitPos(line)
+    if (!t.text) continue
+    if (t.pos && POS_ZH[t.pos]) items.push({ text: POS_ZH[t.pos], lang: 'zh' })
+    items.push({ text: t.text, lang: 'zh' })
+  }
+  // 英文解释：每条用「自己那一行」的词性，与中文数组完全独立，互不借用
+  for (const line of entry.definition) {
+    const d = splitPos(line)
+    if (!d.text) continue
+    if (d.pos && POS_EN[d.pos]) items.push({ text: POS_EN[d.pos], lang: 'en' })
+    items.push({ text: d.text, lang: 'en' })
   }
   void playSequence(items, { repeat: 1, gapMs: 1000 })
 }
