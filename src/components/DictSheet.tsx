@@ -109,10 +109,19 @@ export default function DictSheet({
 
   const entry: DictEntry | null = hit?.entry ?? null
   const senses = entry
-    ? entry.translation.map((t, i) => ({
-        trans: splitPos(t),
-        def: entry.definition[i] ? splitPos(entry.definition[i]) : null,
-      }))
+    ? entry.translation
+        .map((t, i) => ({
+          trans: splitPos(t),
+          def: entry.definition[i] ? splitPos(entry.definition[i]) : null,
+        }))
+        .filter((s) => {
+          const zh = s.trans.text.trim()
+          const en = (s.def?.text ?? '').trim()
+          // 过滤解析残骸：中文仅一个汉字（如孤立「口」标记）或英文以 = 开头的交叉引用
+          const zhHasGloss = (zh.match(/[一-鿿]/g) || []).length >= 2
+          const enIsXref = en.startsWith('=')
+          return zhHasGloss || (en.length > 0 && !enIsXref)
+        })
     : []
 
   return (
