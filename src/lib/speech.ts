@@ -175,6 +175,7 @@ export function cancelSpeech() {
  */
 function speakOne(text: string, lang: SpeakLang = 'en'): Promise<void> {
   return new Promise((resolve) => {
+    text = expandAbbr(text, lang)
     if (!hasSynth() || !text) {
       resolve()
       return
@@ -357,6 +358,77 @@ const POS_EN: Record<string, string> = {
   eg: 'for example',
   attr: 'attributive',
   pred: 'predicative',
+}
+
+/**
+ * 缩写展开：词典原文里大量使用 sb/sth/esp/usu/eg/ie 等缩写，英文 TTS 会逐个字母念
+ * （"sb"→S-B），听感很怪。这里在朗读前把它们展开成完整词。
+ *
+ * 安全铁律（用户明确要求「别和正常单词混淆」）：
+ * 1. 只用 \b 词边界匹配「独立缩写 token」，绝不按子串替换——
+ *    因此 eg 不会动到 egg、usu 不会动到 usual、ie 不会动到 friend/piece。
+ * 2. 映射表只收录「确认是缩写」的 token，已主动剔除会撞正常单词的：
+ *    sing(唱歌)/ant(蚂蚁)/fig(无花果)/lit(light过去式) 等一律不在表内。
+ * 3. 中文 t[] 与英文 d[] 用各自的映射：中文语境展开成中文（某人/某物/尤其），
+ *    由中文语音念出来自然；英文语境展开成英文（somebody/something/especially）。
+ * 注：词性前缀（n./vt. 等）由 POS_ZH/POS_EN 单独朗读，不经此函数，互不干扰。
+ */
+const ABBR_EN: Record<string, string> = {
+  sb: 'somebody',
+  sth: 'something',
+  esp: 'especially',
+  usu: 'usually',
+  eg: 'for example',
+  ie: 'that is',
+  abbr: 'abbreviation',
+  infml: 'informal',
+  fml: 'formal',
+  pl: 'plural',
+  opp: 'opposite',
+  syn: 'synonym',
+  approx: 'approximately',
+  BrE: 'British English',
+  AmE: 'American English',
+  idm: 'idiom',
+  attr: 'attributive',
+  pred: 'predicative',
+  c: 'countable',
+  u: 'uncountable',
+}
+const ABBR_ZH: Record<string, string> = {
+  sb: '某人',
+  sth: '某物',
+  esp: '尤其',
+  usu: '通常',
+  eg: '例如',
+  ie: '也就是',
+  abbr: '缩写',
+  infml: '非正式',
+  fml: '正式',
+  pl: '复数',
+  opp: '反义',
+  syn: '同义',
+  approx: '大约',
+  BrE: '英式英语',
+  AmE: '美式英语',
+  idm: '习语',
+  attr: '作定语',
+  pred: '作表语',
+  c: '可数',
+  u: '不可数',
+}
+// 所有 key 一致（值不同），按长度降序拼接，避免前缀误匹配
+const ABBR_KEYS = Object.keys(ABBR_EN).sort((a, b) => b.length - a.length)
+const ABBR_RE = new RegExp(
+  '\\b(' + ABBR_KEYS.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b',
+  'g',
+)
+
+/** 朗读前展开缩写；lang 决定用中文还是英文展开词。 */
+export function expandAbbr(text: string, lang: SpeakLang = 'en'): string {
+  if (!text) return text
+  const map = lang === 'zh' ? ABBR_ZH : ABBR_EN
+  return text.replace(ABBR_RE, (m) => (m in map ? map[m] : m))
 }
 
 /**
