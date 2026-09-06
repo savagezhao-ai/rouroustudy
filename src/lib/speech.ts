@@ -295,7 +295,7 @@ function langOf(ch: string): 'zh' | 'en' | 'neutral' {
   if (c >= 0x4e00 && c <= 0x9fff) return 'zh' // CJK 汉字
   if (c >= 0x3000 && c <= 0x303f) return 'zh' // CJK 符号
   if ((c >= 0xff00 && c <= 0xffef) || c === 0x2026) return 'zh' // 全角标点 / 省略号
-  if ((c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) || (c >= 0x30 && c <= 0x39)) return 'en'
+  if ((c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a)) return 'en'
   return 'neutral'
 }
 
@@ -320,6 +320,29 @@ function segmentByLang(raw: string): { text: string; lang: SpeakLang }[] {
 }
 
 /**
+ * 朗读前清理：去掉括号（中文 TTS 会把 （） 读成「括号/逗号」，纯噪音），
+ * 并把空白压成单空格（原文里的换行/缩进在朗读时不需要）。
+ * 展示文本（entry.raw）保留括号与换行，只有「朗读」走这层清理。
+ */
+function cleanForRead(raw: string): string {
+  return raw.replace(/[（）()【】\[\]]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+/** 合并相邻同语言片段，避免标点残留造成的碎片段与无谓停顿 */
+function mergeSameLang(segs: { text: string; lang: SpeakLang }[]): { text: string; lang: SpeakLang }[] {
+  const out: { text: string; lang: SpeakLang }[] = []
+  for (const s of segs) {
+    const last = out[out.length - 1]
+    if (last && last.lang === s.lang) {
+      last.text = (last.text + ' ' + s.text).replace(/\s+/g, ' ').trim()
+    } else {
+      out.push({ text: s.text, lang: s.lang })
+    }
+  }
+  return out
+}
+
+/**
  * 查词自动朗读：单词读三遍（每次间隔 1 秒；若查询手势里已念过一遍则补足两遍），
  * 然后从上往下朗读整条原文（保留全部释义与例句），中英文切换处自动停顿。
  * 用户手动点击任意 🔊 会立即中断。
@@ -330,8 +353,9 @@ export function readEntry(entry: DictEntry) {
   const wordRepeat = matched ? 2 : 3
   const items: { text: string; lang: SpeakLang }[] = []
   for (let i = 0; i < wordRepeat; i++) items.push({ text: entry.word, lang: 'en' })
-  items.push(...segmentByLang(entry.raw))
-  void playSequence(items, { repeat: 1, gapMs: 1000, langGapMs: 700 })
+  items.push(...mergeSameLang(segmentByLang(cleanForRead(entry.raw))))
+  // gapMs：同语言相邻段的短停顿；langGapMs：中↔英切换时的停顿（两侧对称、清晰可辨）
+  void playSequence(items, { repeat: 1, gapMs: 300, langGapMs: 650 })
 }
 
 /**
