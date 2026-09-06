@@ -1,5 +1,5 @@
 // 词典面板：底部弹层形式，复习中途查词不会打断当前进度。
-// 数据来自牛津英汉双解，首次使用需下载约 2MB，之后完全离线。
+// 数据来自牛津英汉双解，首次使用需下载约 6.5MB，之后完全离线。
 import { useEffect, useRef, useState } from 'react'
 import {
   dictStatus,
@@ -10,7 +10,7 @@ import {
   type DictHit,
   type DictStatus,
 } from '../lib/dictionary'
-import { speak, primeSpeech, autoReadEntry } from '../lib/speech'
+import { speak, primeSpeech, readEntry } from '../lib/speech'
 
 /** 考试/级别标签的中文名 */
 const EXAM_LABELS: Record<string, string> = {
@@ -35,12 +35,6 @@ const FORM_LABELS: Record<string, string> = {
   r: '比较级',
   t: '最高级',
   s: '复数',
-}
-
-/** 去掉释义前面的词性前缀（"vt. 放弃" -> 词性 vt / 释义 放弃），用于分行展示 */
-function splitPos(line: string): { pos: string; text: string } {
-  const m = /^([a-z]{1,5})\.\s*(.*)$/i.exec(line.trim())
-  return m ? { pos: m[1], text: m[2] } : { pos: '', text: line.trim() }
 }
 
 function formatBytes(n: number): string {
@@ -96,8 +90,8 @@ export default function DictSheet({
     setQuery(q)
     const res = await lookupDict(q)
     setHit(res)
-    // 查到词后自动连读：单词三遍 -> 中文 -> 英文（用户手动点击会立即打断）
-    if (res?.entry) autoReadEntry(res.entry)
+    // 查到词后自动连读：单词三遍 -> 整条原文（中英文混合，切换有停顿）
+    if (res?.entry) readEntry(res.entry)
   }
 
   async function onInput(v: string) {
@@ -108,21 +102,6 @@ export default function DictSheet({
   }
 
   const entry: DictEntry | null = hit?.entry ?? null
-  const senses = entry
-    ? entry.translation
-        .map((t, i) => ({
-          trans: splitPos(t),
-          def: entry.definition[i] ? splitPos(entry.definition[i]) : null,
-        }))
-        .filter((s) => {
-          const zh = s.trans.text.trim()
-          const en = (s.def?.text ?? '').trim()
-          // 过滤解析残骸：中文仅一个汉字（如孤立「口」标记）或英文以 = 开头的交叉引用
-          const zhHasGloss = (zh.match(/[一-鿿]/g) || []).length >= 2
-          const enIsXref = en.startsWith('=')
-          return zhHasGloss || (en.length > 0 && !enIsXref)
-        })
-    : []
 
   return (
     <div className="dialog-mask dict-mask" onClick={onClose}>
@@ -140,8 +119,8 @@ export default function DictSheet({
           <div className="dict-download">
             <p className="dict-dl-title">首次使用需要下载词典数据</p>
               <p className="hint">
-              约 {formatBytes(status.bytes || 2.1e6)}，下载一次后离线可用。
-              收录 2 万余常用词，含音标、中英双解释义、词形变化与考试级别标记。
+              约 {formatBytes(status.bytes || 6.5e6)}，下载一次后离线可用。
+              收录 3 万余词，保留完整牛津双解原文（音标、释义、例句、词形变化与考试级别标记）。
             </p>
             {busy ? (
               <div className="dict-progress">
@@ -158,7 +137,7 @@ export default function DictSheet({
               </div>
             ) : (
               <button className="btn-primary" onClick={handleDownload}>
-                下载词典（{formatBytes(status.bytes || 2.1e6)}）
+                下载词典（{formatBytes(status.bytes || 6.5e6)}）
               </button>
             )}
             {error && <p className="msg">{error}</p>}
@@ -210,9 +189,9 @@ export default function DictSheet({
               </div>
             )}
 
-            {searched && !entry && (
+                {searched && !entry && (
               <p className="hint dict-empty">
-                没查到「{query}」，换个拼写试试（词典收录 2 万余常用词）
+                没查到「{query}」，换个拼写试试（词典收录 3 万余常用词）
               </p>
             )}
 
@@ -232,8 +211,8 @@ export default function DictSheet({
                   </div>
                   <button
                     className="btn-speak"
-                    onClick={() => speak(entry.word, 'en')}
-                    aria-label="朗读单词"
+                    onClick={() => readEntry(entry)}
+                    aria-label="朗读整条释义"
                   >
                     🔊
                   </button>
@@ -257,23 +236,8 @@ export default function DictSheet({
                   ))}
                 </div>
 
-                <div className="dict-senses">
-                  {senses.map((s, i) => (
-                    <div key={i} className="dict-sense">
-                      <div className="dict-sense-main">
-                        {s.trans.pos && <em className="dict-pos">{s.trans.pos}</em>}
-                        <span className="dict-sense-text">{s.trans.text}</span>
-                        <button
-                          className="dict-speak"
-                          onClick={() => void speak(s.def?.text || entry.word)}
-                          aria-label="朗读英文释义"
-                        >
-                          🔊
-                        </button>
-                      </div>
-                      {s.def && <div className="dict-sense-en">{s.def.text}</div>}
-                    </div>
-                  ))}
+                <div className="dict-raw" role="article" aria-label="词典原文">
+                  {entry.raw}
                 </div>
 
                 {entry.forms.length > 0 && (

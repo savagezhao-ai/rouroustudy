@@ -1106,62 +1106,18 @@ body {
   color: var(--green);
 }
 
-/* 释义逐条往下排，每条可单独朗读 */
-.dict-senses {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.dict-sense {
-  border-left: 3px solid var(--brand-soft);
-  padding: 2px 0 2px 12px;
-}
-
-.dict-sense-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.dict-pos {
-  font-style: normal;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--brand);
-  background: var(--brand-soft);
-  border-radius: 6px;
-  padding: 2px 6px;
-  flex-shrink: 0;
-}
-
-.dict-sense-text {
-  flex: 1;
-  font-size: 16px;
-  line-height: 1.5;
-}
-
-.dict-speak {
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border: none;
-  background: transparent;
+/* 牛津原文整块展示：保留换行与缩进，从左上往右下自然阅读 */
+.dict-raw {
+  margin: 12px 0 4px;
+  padding: 12px 14px;
+  background: #fbfbfd;
+  border: 1px solid var(--line, #eee);
+  border-radius: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
   font-size: 15px;
-  cursor: pointer;
-  opacity: 0.75;
-}
-
-.dict-speak:active {
-  opacity: 1;
-  transform: scale(1.1);
-}
-
-.dict-sense-en {
-  margin-top: 3px;
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.7;
+  color: var(--text, #222);
 }
 
 .dict-forms {

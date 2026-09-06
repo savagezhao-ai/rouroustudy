@@ -2,13 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { fresh } from '../test/helpers'
 
-/** 每条一行 JSON，字段与 scripts/build-dict.mjs 产物一致 */
+/** 每条一行 JSON，字段与 .dict-build/build_oxford.py 产物一致（raw 为清洗后的词典原文） */
 const PACK = [
   JSON.stringify({
     w: 'abandon',
     p: "ə'bændən",
-    t: ['vt. 放弃, 抛弃', 'n. 放任'],
-    d: ['v. forsake, leave behind', 'n. the trait of lacking restraint'],
+    raw: '动词 1 vt 放弃, 抛弃: He abandoned his car in the snow. 他把车丢在雪地里. 2 n 放任: with abandon 尽情地.',
     e: 'd:abandoned/p:abandoned/i:abandoning/3:abandons',
     c: 3,
     o: 1,
@@ -18,8 +17,7 @@ const PACK = [
   JSON.stringify({
     w: 'dog',
     p: 'dɒg',
-    t: ['n. 狗'],
-    d: ['n. a domesticated carnivorous mammal'],
+    raw: '名词 1 n 狗; 犬: a small dog 小狗. 2 n 公狗: a dog 公狗.',
     e: 's:dogs',
     c: 2,
     o: 1,
@@ -29,8 +27,7 @@ const PACK = [
   JSON.stringify({
     w: 'given',
     p: "'gɪvn",
-    t: ['v. 给予（give 的过去分词）'],
-    d: [],
+    raw: '动词 1 v 给予（give 的过去分词）: given name 名字.',
     e: '0:give',
     c: 0,
     o: 0,
@@ -40,8 +37,7 @@ const PACK = [
   JSON.stringify({
     w: 'give',
     p: 'gɪv',
-    t: ['vt. 给, 给予'],
-    d: ['v. transfer possession to someone'],
+    raw: '动词 1 vt 给, 给予: give sb sth 给某人某物. 2 vi 赠送: give to charity 捐助.',
     e: 'p:gave/d:given/i:giving/3:gives',
     c: 5,
     o: 1,
@@ -82,8 +78,8 @@ describe('parsePack', () => {
     const { entries } = parsePack(PACK)
     const abandon = entries.find((e) => e.word === 'abandon')!
     expect(abandon.phonetic).toBe("ə'bændən")
-    expect(abandon.translation).toEqual(['vt. 放弃, 抛弃', 'n. 放任'])
-    expect(abandon.definition).toHaveLength(2)
+    expect(abandon.raw).toContain('放弃')
+    expect(abandon.raw).toContain('放任')
     expect(abandon.collins).toBe(3)
     expect(abandon.oxford).toBe(1)
     expect(abandon.tags).toEqual(['gk', 'cet4'])
@@ -130,7 +126,7 @@ describe('词条查询', () => {
     const hit = await lib.lookupDict('abandon')
     expect(hit?.via).toBe('exact')
     expect(hit?.matched).toBe('abandon')
-    expect(hit?.entry.translation[0]).toContain('放弃')
+    expect(hit?.entry.raw).toContain('放弃')
   })
 
   it('查询不区分大小写', async () => {
@@ -221,12 +217,11 @@ describe('真实数据包', () => {
     // 入库词条数应与数据包 manifest 的 count 一致（数据源无关，牛津约 2 万、旧 ECDICT 约 3.8 万）
     expect(await lib.dictSize()).toBe(manifest.count)
 
-    // 常见词：牛津为双解词典，dog 首义项是俚语「fellow 人; 家伙」，动物义在后面，
-    // 故只校验「能查到 + 有英文释义 + 中文里确实含『狗』」，不写死首条。
+    // 常见词：牛津为双解词典，dog 含动物义「狗」，校验「能查到 + raw 非空 + 中文里含『狗』」。
     const dog = await lib.lookupDict('dog')
     expect(dog).toBeTruthy()
-    expect(dog?.entry.definition.length).toBeGreaterThan(0)
-    expect(dog?.entry.translation.join(' ')).toContain('狗')
+    expect(dog?.entry.raw.length).toBeGreaterThan(0)
+    expect(dog?.entry.raw).toContain('狗')
 
     // 变形词还原
     expect((await lib.lookupDict('ran'))?.matched).toBe('run')

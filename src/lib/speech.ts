@@ -248,11 +248,12 @@ export function speak(text: string, lang: SpeakLang = 'en') {
  */
 export async function playSequence(
   items: { text: string; lang: SpeakLang }[],
-  opts?: { repeat?: number; gapMs?: number },
+  opts?: { repeat?: number; gapMs?: number; langGapMs?: number },
 ) {
   if (!hasSynth()) return
   const repeat = opts?.repeat ?? 1
   const gap = opts?.gapMs ?? 1000
+  const langGap = opts?.langGapMs
   const myId = ++seqId
   const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
   // 开头清一次：取消点击手势里 primeSpeech 可能还在念的单词，避免与序列第一句重叠。
@@ -262,102 +263,75 @@ export async function playSequence(
     /* 忽略 */
   }
   await delay(150)
-  for (const item of items) {
+  for (let idx = 0; idx < items.length; idx++) {
     if (myId !== seqId) return
+    const item = items[idx]
     for (let r = 0; r < repeat; r++) {
       if (myId !== seqId) return
       await speakOne(item.text, item.lang)
       if (r < repeat - 1) await delay(gap)
     }
-    await delay(gap)
+    // 项间停顿：若下一项语言与当前项不同，插入更长停顿（中英文切换停顿）
+    const next = items[idx + 1]
+    const useGap = next && langGap != null && next.lang !== item.lang ? langGap : gap
+    await delay(useGap)
   }
 }
 
 /**
- * 把释义拆成「词性 + 正文」，与词典面板显示、手动 🔊 朗读保持一致。
- * 行为必须与 src/components/DictSheet.tsx 里的 splitPos 完全相同。
+ * 把词典原文按「字符脚本」切分成「同语言连续段」。
+ * 每段用对应语言朗读；两段语言不同时，playSequence 会插入较长停顿（中英文切换停顿）。
+ *
+ * 切分策略（解决「中英混合朗读」的核心）：
+ * - 逐字符分类：CJK 汉字 / 全角标点 → zh；ASCII 字母 / 数字 → en；
+ *   空格与半角标点 → 归属到【相邻段】（不单独成段）。
+ *   这样「English (中文) English.」会变成 en｜zh｜en 三段，读起来自然，
+ *   也不会因为一个逗号在中文里误触发英文嗓音。
+ * - 朗读前展开缩写（sb→somebody 等，见 expandAbbr），其余交叉引用 `=`/`Cf` 已在
+ *   数据清洗阶段转成「参见」，无需在此处理。
  */
-function splitPos(line: string): { pos: string; text: string } {
-  const m = /^([a-z]{1,5})\.\s*(.*)$/i.exec((line ?? '').trim())
-  return m ? { pos: m[1], text: m[2] } : { pos: '', text: (line ?? '').trim() }
+function langOf(ch: string): 'zh' | 'en' | 'neutral' {
+  const c = ch.codePointAt(0) ?? 0
+  if (c >= 0x4e00 && c <= 0x9fff) return 'zh' // CJK 汉字
+  if (c >= 0x3000 && c <= 0x303f) return 'zh' // CJK 符号
+  if ((c >= 0xff00 && c <= 0xffef) || c === 0x2026) return 'zh' // 全角标点 / 省略号
+  if ((c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) || (c >= 0x30 && c <= 0x39)) return 'en'
+  return 'neutral'
 }
 
-/** 词性 -> 中文朗读词（n 名词 / vt 及物动词 / vi 不及物动词 …） */
-const POS_ZH: Record<string, string> = {
-  n: '名词',
-  v: '动词',
-  vt: '及物动词',
-  vi: '不及物动词',
-  vn: '动名词',
-  vlink: '系动词',
-  link: '系动词',
-  adj: '形容词',
-  adv: '副词',
-  prep: '介词',
-  conj: '连词',
-  pron: '代词',
-  art: '冠词',
-  num: '数词',
-  int: '感叹词',
-  excl: '感叹词',
-  abbr: '缩写',
-  aux: '助动词',
-  det: '限定词',
-  modal: '情态动词',
-  inf: '不定式',
-  ger: '动名词',
-  phr: '短语',
-  phrv: '短语动词',
-  pl: '复数',
-  sb: '某人',
-  sth: '某物',
-  c: '可数',
-  u: '不可数',
-  esp: '尤其',
-  usu: '通常',
-  ie: '也就是',
-  eg: '例如',
-  attr: '作定语',
-  pred: '作表语',
+/** 逐字符切分原文为「同语言连续段」 */
+function segmentByLang(raw: string): { text: string; lang: SpeakLang }[] {
+  const out: { text: string; lang: SpeakLang }[] = []
+  let cur = ''
+  let curLang: SpeakLang = 'en'
+  const flush = () => {
+    if (cur.trim()) out.push({ text: cur.trim(), lang: curLang })
+    cur = ''
+  }
+  for (const ch of raw) {
+    const k = langOf(ch)
+    const cls: SpeakLang = k === 'neutral' ? curLang : k
+    if (cur && cls !== curLang) flush() // 语言切换：先收尾当前段
+    cur += ch
+    curLang = cls
+  }
+  flush()
+  return out
 }
 
-/** 词性 -> 英文朗读词（noun / transitive verb / intransitive verb …） */
-const POS_EN: Record<string, string> = {
-  n: 'noun',
-  v: 'verb',
-  vt: 'transitive verb',
-  vi: 'intransitive verb',
-  vn: 'verbal noun',
-  vlink: 'linking verb',
-  link: 'linking verb',
-  adj: 'adjective',
-  adv: 'adverb',
-  prep: 'preposition',
-  conj: 'conjunction',
-  pron: 'pronoun',
-  art: 'article',
-  num: 'numeral',
-  int: 'interjection',
-  excl: 'exclamation',
-  abbr: 'abbreviation',
-  aux: 'auxiliary verb',
-  det: 'determiner',
-  modal: 'modal verb',
-  inf: 'infinitive',
-  ger: 'gerund',
-  phr: 'phrase',
-  phrv: 'phrasal verb',
-  pl: 'plural',
-  sb: 'somebody',
-  sth: 'something',
-  c: 'countable',
-  u: 'uncountable',
-  esp: 'especially',
-  usu: 'usually',
-  ie: 'that is',
-  eg: 'for example',
-  attr: 'attributive',
-  pred: 'predicative',
+/**
+ * 查词自动朗读：单词读三遍（每次间隔 1 秒；若查询手势里已念过一遍则补足两遍），
+ * 然后从上往下朗读整条原文（保留全部释义与例句），中英文切换处自动停顿。
+ * 用户手动点击任意 🔊 会立即中断。
+ */
+export function readEntry(entry: DictEntry) {
+  if (!entry) return
+  const matched = primedWord && primedWord === entry.word.toLowerCase()
+  const wordRepeat = matched ? 2 : 3
+  const items: { text: string; lang: SpeakLang }[] = []
+  for (let i = 0; i < wordRepeat; i++) items.push({ text: entry.word, lang: 'en' })
+  items.push(...segmentByLang(entry.raw))
+  void playSequence(items, { repeat: 1, gapMs: 1000, langGapMs: 700 })
 }
 
 /**
@@ -429,52 +403,4 @@ export function expandAbbr(text: string, lang: SpeakLang = 'en'): string {
   if (!text) return text
   const map = lang === 'zh' ? ABBR_ZH : ABBR_EN
   return text.replace(ABBR_RE, (m) => (m in map ? map[m] : m))
-}
-
-/**
- * 查词自动朗读：单词读三遍（每次间隔 1 秒），然后逐「义项」朗读——每个义项先读中文（带词性），
- * 再读英文（带词性）。用户若手动点击任意 🔊，会立即中断自动连读。
- *
- * 关键一致性：朗读内容必须与词典面板【显示的内容完全一致】。面板 DictSheet 把中文 translation
- * 与英文 definition 按行「配对」成义项（长度取中文条数），因此这里也用完全相同的配对方式遍历，
- * 而不是独立遍历全部 definition——否则会读出面板上没有显示的英文释义（如 test 的第 4 条
- * "a hard outer covering…"），造成「听到了但看不到」的错位感。
- *
- * 词性按「连续相同则只念一次」朗读（名词：…；…；动词：…），避免 ECDICT 英文释义每条词性都标
- * "n." 导致反复念 "noun" 的单调杂音；念完词性停顿 1 秒（playSequence 的项间间隔）再念正文。
- *
- * 若打开/查询的手势里已经念过该词（primeSpeech 完成解锁的那一遍），这里只补足到三遍。
- */
-export function autoReadEntry(entry: DictEntry) {
-  if (!entry) return
-  const matched = primedWord && primedWord === entry.word.toLowerCase()
-  const wordRepeat = matched ? 2 : 3
-  const items: { text: string; lang: SpeakLang }[] = []
-  // 单词读三遍（已念过一遍则补足两遍）
-  for (let i = 0; i < wordRepeat; i++) items.push({ text: entry.word, lang: 'en' })
-  // 逐义项（与面板 DictSheet 的 senses 完全一致：translation[i] 配对 definition[i]）
-  let lastZhPos = ''
-  let lastEnPos = ''
-  for (let i = 0; i < entry.translation.length; i++) {
-    const t = splitPos(entry.translation[i])
-    if (t.text) {
-      if (t.pos && POS_ZH[t.pos] && t.pos !== lastZhPos) {
-        items.push({ text: POS_ZH[t.pos], lang: 'zh' })
-        lastZhPos = t.pos
-      }
-      items.push({ text: t.text, lang: 'zh' })
-    }
-    const defLine = entry.definition[i]
-    if (defLine) {
-      const d = splitPos(defLine)
-      if (d.text) {
-        if (d.pos && POS_EN[d.pos] && d.pos !== lastEnPos) {
-          items.push({ text: POS_EN[d.pos], lang: 'en' })
-          lastEnPos = d.pos
-        }
-        items.push({ text: d.text, lang: 'en' })
-      }
-    }
-  }
-  void playSequence(items, { repeat: 1, gapMs: 1000 })
 }

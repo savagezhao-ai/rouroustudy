@@ -1,6 +1,6 @@
-// 内嵌词典：数据源 ECDICT（MIT），首次使用时下载压缩包并写入 IndexedDB，之后完全离线查询。
-// 数据由 .dict-build/build_oxford.py 从牛津英汉双解（stardict-oxford-gb）生成到
-// public/dict/，约 2 万词条、2MB。
+// 内嵌词典：数据源牛津英汉双解（stardict-oxford-gb, GPL），首次使用时下载压缩包并写入 IndexedDB，之后完全离线查询。
+// 数据由 .dict-build/build_oxford.py 生成到 public/dict/，约 3 万词条、6.5MB。
+// 每个词条保留清洗后的原文 raw（剥 HTML、词性头转中文、清理例句分隔符），显示与朗读都用它。
 //
 // 与业务数据库分开存放：词典是只读的共享资源，不随用户切换而变，
 // 所以单独一个数据库，避免每个用户各存一份。
@@ -19,10 +19,8 @@ export interface WordForm {
 export interface DictEntry {
   word: string
   phonetic: string
-  /** 中文释义，逐条（“一句一句往下”） */
-  translation: string[]
-  /** 英文释义，逐条 */
-  definition: string[]
+  /** 清洗后的词典原文（保留全部释义与例句，词性头已转中文），显示与朗读都用它 */
+  raw: string
   /** 词形变化（过去式、复数等） */
   forms: WordForm[]
   collins: number // 柯林斯星级 0-5
@@ -87,8 +85,7 @@ export function resetDictDb() {
 interface RawEntry {
   w: string
   p: string
-  t: string[]
-  d: string[]
+  raw: string
   e: string
   c: number
   o: number
@@ -114,8 +111,7 @@ function toEntry(r: RawEntry): DictEntry {
   return {
     word: r.w,
     phonetic: r.p,
-    translation: r.t ?? [],
-    definition: r.d ?? [],
+    raw: r.raw ?? '',
     forms: parseExchange(r.e),
     collins: r.c ?? 0,
     oxford: r.o ?? 0,
@@ -184,7 +180,7 @@ export interface LoadProgress {
 
 /**
  * 下载并装载词典。已装载且版本一致时直接返回。
- * onProgress 用于界面显示进度条（3MB 下载在手机上需要几秒）。
+ * onProgress 用于界面显示进度条（6.5MB 下载在手机上需要几秒）。
  */
 export async function loadDict(onProgress?: (p: LoadProgress) => void): Promise<void> {
   const status = await dictStatus()
@@ -318,14 +314,17 @@ export async function lookupDict(word: string): Promise<DictHit | null> {
   if (!q) return null
   const d = await dictDb()
 
-  const exact = await d.get('entries', q)
-  if (exact) return { entry: exact, matched: exact.word, via: 'exact' }
-
+  // 变形还原优先：ran / went / dogs 这类本身也是词头，但用户更想要原形
+  // run / go / dog 的释义。forms 反向索引由词条 e 字段构建（ran 在 run 的 e 里），
+  // 命中即跳到原形，避免被「精确匹配」截胡返回无独立释义价值的变形词头。
   const lemma = await d.get('forms', q)
   if (lemma) {
     const hit = await d.get('entries', lemma)
     if (hit) return { entry: hit, matched: hit.word, via: 'form' }
   }
+
+  const exact = await d.get('entries', q)
+  if (exact) return { entry: exact, matched: exact.word, via: 'exact' }
 
   for (const c of stemCandidates(q)) {
     const direct = await d.get('entries', c)
