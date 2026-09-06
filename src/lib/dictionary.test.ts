@@ -221,10 +221,12 @@ describe('真实数据包', () => {
     // 入库词条数应与数据包 manifest 的 count 一致（数据源无关，牛津约 2 万、旧 ECDICT 约 3.8 万）
     expect(await lib.dictSize()).toBe(manifest.count)
 
-    // 常见词
+    // 常见词：牛津为双解词典，dog 首义项是俚语「fellow 人; 家伙」，动物义在后面，
+    // 故只校验「能查到 + 有英文释义 + 中文里确实含『狗』」，不写死首条。
     const dog = await lib.lookupDict('dog')
-    expect(dog?.entry.translation[0]).toContain('狗')
+    expect(dog).toBeTruthy()
     expect(dog?.entry.definition.length).toBeGreaterThan(0)
+    expect(dog?.entry.translation.join(' ')).toContain('狗')
 
     // 变形词还原
     expect((await lib.lookupDict('ran'))?.matched).toBe('run')
