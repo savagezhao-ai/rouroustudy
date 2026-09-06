@@ -3,11 +3,12 @@ import { getMeta, setMeta } from './db'
 import type { DictEntry } from './dictionary'
 
 export interface SpeechSettings {
-  voiceURI: string
+  voiceURI: string // 英文语音
+  zhVoiceURI: string // 中文语音
   rate: number
 }
 
-export const DEFAULT_SPEECH: SpeechSettings = { voiceURI: '', rate: 0.9 }
+export const DEFAULT_SPEECH: SpeechSettings = { voiceURI: '', zhVoiceURI: '', rate: 0.9 }
 
 let voices: SpeechSynthesisVoice[] = []
 
@@ -21,7 +22,8 @@ export function loadSpeechSettings() {
   if (!('speechSynthesis' in window)) return
   getMeta('speech', DEFAULT_SPEECH)
     .then((s) => {
-      cachedSpeech = s
+      // 合并默认值：老版本存储里没有 zhVoiceURI 字段（undefined 会让设置页显示异常）
+      cachedSpeech = { ...DEFAULT_SPEECH, ...s }
     })
     .catch(() => {})
 }
@@ -63,6 +65,16 @@ export function englishVoices(): SpeechSynthesisVoice[] {
   if (!hasSynth()) return []
   if (voices.length === 0) refreshVoices()
   return voices.filter((v) => v.lang.toLowerCase().startsWith('en'))
+}
+
+/** 中文音色列表（供设置页「中文语音」下拉用） */
+export function zhVoices(): SpeechSynthesisVoice[] {
+  if (!hasSynth()) return []
+  if (voices.length === 0) refreshVoices()
+  return voices
+    .map((v) => ({ v, l: v.lang.toLowerCase().replace('_', '-') }))
+    .filter(({ l }) => l.startsWith('zh'))
+    .map(({ v }) => v)
 }
 
 // 优先级：macOS/iOS 高质量增强音色在前
@@ -136,9 +148,15 @@ export function primeSpeech(word?: string) {
     /* 忽略 */
   }
   if (w) {
-    // 朗读真实单词：完成解锁，并作为自动连读的第一遍
+    // 朗读真实单词：完成解锁，并作为自动连读的第一遍（用用户设置的英文音色）
     const u = new SpeechSynthesisUtterance(w)
-    u.lang = 'en-US'
+    const v = (cachedSpeech.voiceURI && findVoice(cachedSpeech.voiceURI)) ?? pickDefaultVoice('en')
+    if (v) {
+      u.voice = v
+      u.lang = v.lang
+    } else {
+      u.lang = 'en-US'
+    }
     u.rate = cachedSpeech.rate > 0 ? cachedSpeech.rate : DEFAULT_SPEECH.rate
     primedWord = w.toLowerCase()
     try {
@@ -193,8 +211,9 @@ function speakOne(text: string, lang: SpeakLang = 'en'): Promise<void> {
     const synth = window.speechSynthesis
     const s = cachedSpeech
     refreshVoices()
-    // 中英文都优先用用户选定的音色（之前中文被硬编码成默认音色，无视设置）
-    const v = findVoice(s.voiceURI) ?? pickDefaultVoice(lang)
+    // 中英文各自用各自设置的音色（Bug 1 修复：中文段误用英文音色 → 发不出中文音 → 静音）
+    const uri = lang === 'zh' ? s.zhVoiceURI : s.voiceURI
+    const v = (uri && findVoice(uri)) ?? pickDefaultVoice(lang)
     const u = new SpeechSynthesisUtterance(text)
     if (v) {
       u.voice = v
@@ -428,6 +447,7 @@ const ABBR_EN: Record<string, string> = {
   pred: 'predicative',
   c: 'countable',
   u: 'uncountable',
+  etc: 'et cetera',
 }
 const ABBR_ZH: Record<string, string> = {
   sb: '某人',
@@ -450,6 +470,7 @@ const ABBR_ZH: Record<string, string> = {
   pred: '作表语',
   c: '可数',
   u: '不可数',
+  etc: '等等',
 }
 // 所有 key 一致（值不同），按长度降序拼接，避免前缀误匹配
 const ABBR_KEYS = Object.keys(ABBR_EN).sort((a, b) => b.length - a.length)

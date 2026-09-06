@@ -7,7 +7,7 @@ import {
   type Deck,
   type Word,
 } from '../lib/db'
-import { englishVoices, DEFAULT_SPEECH, speak, setSpeechSettings, type SpeechSettings } from '../lib/speech'
+import { englishVoices, zhVoices, DEFAULT_SPEECH, speak, setSpeechSettings, type SpeechSettings } from '../lib/speech'
 import { dailyNewLimit } from '../lib/study'
 import { importApkg } from '../lib/apkg'
 import {
@@ -450,17 +450,18 @@ export default function Manage({
 function SpeechSettingsCard() {
   const [settings, setSettings] = useState<SpeechSettings>(DEFAULT_SPEECH)
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [zhList, setZhList] = useState<SpeechSynthesisVoice[]>([])
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     ;(async () => setSettings(await getMeta<SpeechSettings>('speech', DEFAULT_SPEECH)))()
-    // 音色列表异步加载，轮询刷新
+    // 音色列表异步加载，轮询刷新（中英文各自一份）
     const t = setInterval(() => {
       const v = englishVoices()
-      if (v.length > 0) {
-        setVoices(v)
-        clearInterval(t)
-      }
+      const z = zhVoices()
+      if (v.length > 0) setVoices(v)
+      if (z.length > 0) setZhList(z)
+      if (v.length > 0 && z.length > 0) clearInterval(t)
     }, 400)
     return () => clearInterval(t)
   }, [])
@@ -478,6 +479,9 @@ function SpeechSettingsCard() {
     <div className="manage-card">
       <h3>发音设置{saved && <span className="saved-tag">已自动保存 ✓</span>}</h3>
       <p className="hint">选好音色或调完语速立即生效，点"试听"验证</p>
+      <label className="hint" style={{ display: 'block', marginTop: 6 }}>
+        英文语音
+      </label>
       <select
         className="input"
         value={settings.voiceURI}
@@ -485,6 +489,21 @@ function SpeechSettingsCard() {
       >
         <option value="">自动（推荐）</option>
         {voices.map((v) => (
+          <option key={v.voiceURI} value={v.voiceURI}>
+            {v.name}（{v.lang}）
+          </option>
+        ))}
+      </select>
+      <label className="hint" style={{ display: 'block', marginTop: 10 }}>
+        中文语音
+      </label>
+      <select
+        className="input"
+        value={settings.zhVoiceURI}
+        onChange={(e) => update({ zhVoiceURI: e.target.value })}
+      >
+        <option value="">自动（推荐）</option>
+        {zhList.map((v) => (
           <option key={v.voiceURI} value={v.voiceURI}>
             {v.name}（{v.lang}）
           </option>
@@ -504,11 +523,14 @@ function SpeechSettingsCard() {
       </div>
       <div className="row-actions">
         <button className="btn-ghost" onClick={() => speak('apple')}>
-          🔊 试听
+          🔊 试听英文
+        </button>
+        <button className="btn-ghost" onClick={() => speak('你好，这是一个中文试听', 'zh')}>
+          🔊 试听中文
         </button>
         <button
           className="btn-ghost"
-          onClick={() => update({ voiceURI: '', rate: DEFAULT_SPEECH.rate })}
+          onClick={() => update({ voiceURI: '', zhVoiceURI: '', rate: DEFAULT_SPEECH.rate })}
         >
           恢复默认
         </button>

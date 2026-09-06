@@ -37,7 +37,7 @@ describe('expandAbbr 缩写展开', () => {
 describe('发音设置回归防护', () => {
   it('setSpeechSettings 即时落盘，改设置后读取即生效（修复「设置形同虚设」）', async () => {
     const before = await getMeta('speech', null)
-    const custom = { voiceURI: 'com.apple.ttsbundle.Samantha', rate: 0.8 }
+    const custom = { voiceURI: 'com.apple.ttsbundle.Samantha', zhVoiceURI: 'com.apple.ttsbundle.Tingting', rate: 0.8 }
     await setSpeechSettings(custom)
     const after = await getMeta('speech', null)
     expect(after).toEqual(custom)
