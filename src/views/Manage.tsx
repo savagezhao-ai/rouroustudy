@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import {
   db,
   getMeta,
-  setMeta,
   newId,
   wordId,
   type Deck,
@@ -466,12 +465,10 @@ function SpeechSettingsCard() {
     return () => clearInterval(t)
   }, [])
 
-  // 即改即存，保证"试听"用的就是当前选择的值
-  async function update(patch: Partial<SpeechSettings>) {
+  // 即改即存并立即刷新朗读引擎（setSpeechSettings 负责内存+落盘）
+  function update(patch: Partial<SpeechSettings>) {
     const next = { ...settings, ...patch }
     setSettings(next)
-    await setMeta('speech', next)
-    // 关键：同步刷新生效到内存，否则只有重载页面才生效（"语音/语速形同虚设"的根因）
     setSpeechSettings(next)
     setSaved(true)
     setTimeout(() => setSaved(false), 1200)

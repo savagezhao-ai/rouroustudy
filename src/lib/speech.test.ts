@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { expandAbbr } from './speech'
+import { expandAbbr, setSpeechSettings, segmentByLang, PAUSE_MS } from './speech'
+import { getMeta } from './db'
 
 describe('expandAbbr 缩写展开', () => {
   it('英文：展开常用缩写', () => {
@@ -30,5 +31,38 @@ describe('expandAbbr 缩写展开', () => {
 
   it('空字符串安全', () => {
     expect(expandAbbr('', 'en')).toBe('')
+  })
+})
+
+describe('发音设置回归防护', () => {
+  it('setSpeechSettings 即时落盘，改设置后读取即生效（修复「设置形同虚设」）', async () => {
+    const before = await getMeta('speech', null)
+    const custom = { voiceURI: 'com.apple.ttsbundle.Samantha', rate: 0.8 }
+    await setSpeechSettings(custom)
+    const after = await getMeta('speech', null)
+    expect(after).toEqual(custom)
+    // 还原，避免污染其它测试
+    if (before) setSpeechSettings(before)
+  })
+})
+
+describe('朗读分段与中文括号停顿', () => {
+  it('中文全角括号 （） 转为停顿项，而非被读成「括号/逗号」', () => {
+    const segs = segmentByLang('测验（对人或事物的）试验')
+    const pauses = segs.filter((s) => 'pause' in s) as { pause: number }[]
+    expect(pauses).toHaveLength(2) // 左括号 + 右括号 各一个停顿项
+    expect(pauses[0].pause).toBe(PAUSE_MS) // 0.5s
+    // 文本段里不应再含全角括号字符
+    const texts = (segs.filter((s) => 'text' in s) as { text: string }[]).map((s) => s.text)
+    expect(texts.join('')).not.toContain('（')
+    expect(texts.join('')).not.toContain('）')
+  })
+
+  it('中英文混排按语言分段，不丢失内容', () => {
+    const segs = segmentByLang('测验 test 考试')
+    const texts = (segs.filter((s) => 'text' in s) as { text: string }[]).map((s) => s.text)
+    expect(texts.join(' ')).toContain('测验')
+    expect(texts.join(' ')).toContain('test')
+    expect(texts.join(' ')).toContain('考试')
   })
 })

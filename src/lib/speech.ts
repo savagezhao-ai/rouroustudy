@@ -1,5 +1,5 @@
 // 发音模块：自动挑选高质量英语音色（Samantha/Daniel 等），设置里可手动换
-import { getMeta } from './db'
+import { getMeta, setMeta } from './db'
 import type { DictEntry } from './dictionary'
 
 export interface SpeechSettings {
@@ -27,12 +27,13 @@ export function loadSpeechSettings() {
 }
 
 /**
- * 用户在「发音设置」里改了语音/语速后立即调用：同步刷新内存里的 cachedSpeech。
- * 否则只在启动时加载一次，用户在设置页改完直接去查词，朗读用的还是旧值——
- * 这就是「语音、语速设置形同虚设」的根因。
+ * 用户在「发音设置」里改了语音/语速后立即调用：同步刷新内存里的 cachedSpeech，并落盘。
+ * 这是设置改动的【唯一入口】，Manage 页面改设置只调它即可，不再单独写 storage，
+ * 否则「改了设置但内存缓存没刷新 → 朗读还是旧值」的回归（之前就是这么坏的）。
  */
-export function setSpeechSettings(s: SpeechSettings) {
+export async function setSpeechSettings(s: SpeechSettings) {
   cachedSpeech = s
+  await setMeta('speech', s) // 落盘
 }
 
 function hasSynth(): boolean {
@@ -318,7 +319,7 @@ function langOf(ch: string): 'zh' | 'en' | 'neutral' {
 }
 
 /** 逐字符切分原文为「同语言连续段」+「中文括号停顿项」 */
-function segmentByLang(raw: string): SeqItem[] {
+export function segmentByLang(raw: string): SeqItem[] {
   const out: SeqItem[] = []
   let cur = ''
   let curLang: SpeakLang = 'en'
@@ -357,7 +358,7 @@ function cleanForRead(raw: string): string {
 export type SeqItem = { text: string; lang: SpeakLang } | { pause: number }
 
 /** 中文括号停顿时长（毫秒） */
-const PAUSE_MS = 500
+export const PAUSE_MS = 500
 
 /** 合并相邻同语言文本段，避免标点残留造成的碎片段与无谓停顿（停顿项保持独立） */
 function mergeSameLang(segs: SeqItem[]): SeqItem[] {
