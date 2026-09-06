@@ -26,6 +26,15 @@ export function loadSpeechSettings() {
     .catch(() => {})
 }
 
+/**
+ * 用户在「发音设置」里改了语音/语速后立即调用：同步刷新内存里的 cachedSpeech。
+ * 否则只在启动时加载一次，用户在设置页改完直接去查词，朗读用的还是旧值——
+ * 这就是「语音、语速设置形同虚设」的根因。
+ */
+export function setSpeechSettings(s: SpeechSettings) {
+  cachedSpeech = s
+}
+
 function hasSynth(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
@@ -183,7 +192,8 @@ function speakOne(text: string, lang: SpeakLang = 'en'): Promise<void> {
     const synth = window.speechSynthesis
     const s = cachedSpeech
     refreshVoices()
-    const v = lang === 'zh' ? pickDefaultVoice('zh') : (findVoice(s.voiceURI) ?? pickDefaultVoice())
+    // 中英文都优先用用户选定的音色（之前中文被硬编码成默认音色，无视设置）
+    const v = findVoice(s.voiceURI) ?? pickDefaultVoice(lang)
     const u = new SpeechSynthesisUtterance(text)
     if (v) {
       u.voice = v
@@ -199,13 +209,16 @@ function speakOne(text: string, lang: SpeakLang = 'en'): Promise<void> {
         resolve()
       }
     }
-    // 充裕估算：系数放大、基础时长加长，确保覆盖绝大多数长句，避免下一句提前叠加
-    const est = Math.max(1200, (text.length * 110) / (u.rate || 1) + 1800)
-    const minMs = est * 0.6
+    // 收尾基准 = 实际音频结束（onend）。Web Speech 在 Safari/WebKit 上偶尔会【提前】触发 onend
+    // （音频其实还没播完），若直接以 onend 收尾，下一句会叠到尾音上（长英文句尤其明显）。
+    // 故：onend 若在【开始 250ms 内】触发视为误报忽略，直到自然收尾；est 仅作硬兜底超时。
+    // est 紧贴真实语速估算（避免过长死等），让「项间停顿 gap/langGap」成为主导的、对称的停顿，
+    // 否则英文段结束后会死等长 ms，造成「英→中」比「中→英」明显更久的错觉。
+    const est = Math.max(700, (text.length * 80) / (u.rate || 1) + 500)
     const startedAt = Date.now()
     const to = setTimeout(finish, est)
     u.onend = () => {
-      if (Date.now() - startedAt >= minMs) finish()
+      if (Date.now() - startedAt >= 250) finish()
     }
     u.onerror = finish
     try {
@@ -247,7 +260,7 @@ export function speak(text: string, lang: SpeakLang = 'en') {
  * primeSpeech 可能还在念的单词），并等待足够时长让其尾音落下，防止与序列首句重叠。
  */
 export async function playSequence(
-  items: { text: string; lang: SpeakLang }[],
+  items: SeqItem[],
   opts?: { repeat?: number; gapMs?: number; langGapMs?: number },
 ) {
   if (!hasSynth()) return
@@ -263,18 +276,23 @@ export async function playSequence(
     /* 忽略 */
   }
   await delay(150)
-  for (let idx = 0; idx < items.length; idx++) {
+  let prevLang: SpeakLang | null = null
+  for (const item of items) {
     if (myId !== seqId) return
-    const item = items[idx]
+    if ('pause' in item) {
+      await delay(item.pause)
+      continue
+    }
+    // 中↔英切换：在下一项（文本）朗读之前插入对称停顿，两侧一致
+    if (prevLang !== null && langGap != null && item.lang !== prevLang) {
+      await delay(langGap)
+    }
     for (let r = 0; r < repeat; r++) {
       if (myId !== seqId) return
       await speakOne(item.text, item.lang)
       if (r < repeat - 1) await delay(gap)
     }
-    // 项间停顿：若下一项语言与当前项不同，插入更长停顿（中英文切换停顿）
-    const next = items[idx + 1]
-    const useGap = next && langGap != null && next.lang !== item.lang ? langGap : gap
-    await delay(useGap)
+    prevLang = item.lang
   }
 }
 
@@ -299,9 +317,9 @@ function langOf(ch: string): 'zh' | 'en' | 'neutral' {
   return 'neutral'
 }
 
-/** 逐字符切分原文为「同语言连续段」 */
-function segmentByLang(raw: string): { text: string; lang: SpeakLang }[] {
-  const out: { text: string; lang: SpeakLang }[] = []
+/** 逐字符切分原文为「同语言连续段」+「中文括号停顿项」 */
+function segmentByLang(raw: string): SeqItem[] {
+  const out: SeqItem[] = []
   let cur = ''
   let curLang: SpeakLang = 'en'
   const flush = () => {
@@ -309,6 +327,12 @@ function segmentByLang(raw: string): { text: string; lang: SpeakLang }[] {
     cur = ''
   }
   for (const ch of raw) {
+    // 中文全角括号：收尾当前段，并插入一个停顿项（用户要的「适当停顿」）
+    if (ch === '（' || ch === '）') {
+      flush()
+      out.push({ pause: PAUSE_MS })
+      continue
+    }
     const k = langOf(ch)
     const cls: SpeakLang = k === 'neutral' ? curLang : k
     if (cur && cls !== curLang) flush() // 语言切换：先收尾当前段
@@ -320,20 +344,31 @@ function segmentByLang(raw: string): { text: string; lang: SpeakLang }[] {
 }
 
 /**
- * 朗读前清理：去掉括号（中文 TTS 会把 （） 读成「括号/逗号」，纯噪音），
- * 并把空白压成单空格（原文里的换行/缩进在朗读时不需要）。
- * 展示文本（entry.raw）保留括号与换行，只有「朗读」走这层清理。
+ * 朗读前清理：去掉半角/方括号等无需朗读的括号，并把空白压成单空格。
+ * 注意：【中文全角括号 （） 故意保留】，由 segmentByLang 在遍历时识别为「0.5s 停顿项」，
+ * 这样中文标点既不会被念成「括号/逗号」，又能按用户要求留出适当停顿。
+ * 展示文本（entry.raw）保留全部括号与换行，只有「朗读」走这层清理。
  */
 function cleanForRead(raw: string): string {
-  return raw.replace(/[（）()【】\[\]]/g, '').replace(/\s+/g, ' ').trim()
+  return raw.replace(/[()【】\[\]]/g, '').replace(/\s+/g, ' ').trim()
 }
 
-/** 合并相邻同语言片段，避免标点残留造成的碎片段与无谓停顿 */
-function mergeSameLang(segs: { text: string; lang: SpeakLang }[]): { text: string; lang: SpeakLang }[] {
-  const out: { text: string; lang: SpeakLang }[] = []
+/** 朗读序列元素：要么是「一段同语言文本」，要么是「插入一段停顿」 */
+export type SeqItem = { text: string; lang: SpeakLang } | { pause: number }
+
+/** 中文括号停顿时长（毫秒） */
+const PAUSE_MS = 500
+
+/** 合并相邻同语言文本段，避免标点残留造成的碎片段与无谓停顿（停顿项保持独立） */
+function mergeSameLang(segs: SeqItem[]): SeqItem[] {
+  const out: SeqItem[] = []
   for (const s of segs) {
+    if ('pause' in s) {
+      out.push(s)
+      continue
+    }
     const last = out[out.length - 1]
-    if (last && last.lang === s.lang) {
+    if (last && !('pause' in last) && last.lang === s.lang) {
       last.text = (last.text + ' ' + s.text).replace(/\s+/g, ' ').trim()
     } else {
       out.push({ text: s.text, lang: s.lang })
@@ -351,11 +386,11 @@ export function readEntry(entry: DictEntry) {
   if (!entry) return
   const matched = primedWord && primedWord === entry.word.toLowerCase()
   const wordRepeat = matched ? 2 : 3
-  const items: { text: string; lang: SpeakLang }[] = []
+  const items: SeqItem[] = []
   for (let i = 0; i < wordRepeat; i++) items.push({ text: entry.word, lang: 'en' })
   items.push(...mergeSameLang(segmentByLang(cleanForRead(entry.raw))))
   // gapMs：同语言相邻段的短停顿；langGapMs：中↔英切换时的停顿（两侧对称、清晰可辨）
-  void playSequence(items, { repeat: 1, gapMs: 300, langGapMs: 650 })
+  void playSequence(items, { repeat: 1, gapMs: 300, langGapMs: 700 })
 }
 
 /**

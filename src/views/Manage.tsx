@@ -8,7 +8,7 @@ import {
   type Deck,
   type Word,
 } from '../lib/db'
-import { englishVoices, DEFAULT_SPEECH, speak, type SpeechSettings } from '../lib/speech'
+import { englishVoices, DEFAULT_SPEECH, speak, setSpeechSettings, type SpeechSettings } from '../lib/speech'
 import { dailyNewLimit } from '../lib/study'
 import { importApkg } from '../lib/apkg'
 import {
@@ -471,6 +471,8 @@ function SpeechSettingsCard() {
     const next = { ...settings, ...patch }
     setSettings(next)
     await setMeta('speech', next)
+    // 关键：同步刷新生效到内存，否则只有重载页面才生效（"语音/语速形同虚设"的根因）
+    setSpeechSettings(next)
     setSaved(true)
     setTimeout(() => setSaved(false), 1200)
   }

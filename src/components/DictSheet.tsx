@@ -104,15 +104,16 @@ export default function DictSheet({
   const entry: DictEntry | null = hit?.entry ?? null
 
   return (
-    <div className="dialog-mask dict-mask" onClick={onClose}>
-      <div className="dict-sheet" onClick={(e) => e.stopPropagation()}>
-        <header className="dict-head">
-          <h3>📖 词典</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="关闭">
-            ✕
-          </button>
-        </header>
+    <div className="dict-page" role="dialog" aria-modal="true">
+      <header className="dict-head">
+        <button className="icon-btn dict-back" onClick={onClose} aria-label="返回">
+          ‹ 返回
+        </button>
+        <h3>📖 词典</h3>
+        <span className="dict-head-spacer" />
+      </header>
 
+      <div className="dict-page-body">
         {status === null && <p className="hint">正在检查词典数据…</p>}
 
         {status && !status.ready && (
